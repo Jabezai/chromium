@@ -109,6 +109,8 @@
 #import "services/metrics/public/cpp/ukm_builders.h"
 #import "ui/base/device_form_factor.h"
 #import "ui/base/l10n/l10n_util.h"
+#import "ios/chrome/browser/ui/url_input/url_input_view_controller.h"
+#import "base/strings/sys_string_conversions.h"
 
 namespace {
 
@@ -166,7 +168,7 @@ enum HeaderBehaviour {
                                      FullscreenUIElement,
                                      MainContentUI,
                                      SideSwipeUIControllerDelegate,
-                                     UIGestureRecognizerDelegate> {
+                                     UIGestureRecognizerDelegate,URLInputViewControllerDelegate> {
   // Identifier for each animation of an NTP opening.
   NSInteger _NTPAnimationIdentifier;
 
@@ -886,6 +888,14 @@ enum HeaderBehaviour {
   [self addConstraintsToToolbar];
 
   [_sideSwipeCoordinator addHorizontalGesturesToView:self.view];
+
+  // Add custom right-to-left swipe gesture recognizer
+  UISwipeGestureRecognizer* swipeGesture = [[UISwipeGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(handleRightToLeftSwipe:)];
+  swipeGesture.direction = UISwipeGestureRecognizerDirectionLeft;
+  swipeGesture.delegate = self;
+  [self.view addGestureRecognizer:swipeGesture];
 
   // Add a tap gesture recognizer to save the last tap location for the source
   // location of the new tab animation.
@@ -2538,24 +2548,52 @@ enum HeaderBehaviour {
     CHECK(!accessibilityLabel);
   }
 }
+
+#pragma mark - URLInputViewControllerDelegate
+
+- (void)handleRightToLeftSwipe:(UISwipeGestureRecognizer*)gesture {
+  if (gesture.state == UIGestureRecognizerStateEnded) {
+    NSLog(@"Right-to-left swipe detected");
+    URLInputViewController* urlInputVC = [[URLInputViewController alloc] init];
+    urlInputVC.delegate = self;
+    UINavigationController* navController =
+        [[UINavigationController alloc] initWithRootViewController:urlInputVC];
+    navController.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:navController animated:YES completion:nil];
+  }
+}
+
+- (void)urlInputViewController:(UIViewController*)controller
+                  didEnterURL:(NSURL*)url {
+  // Load the URL in the current web view
+  web::NavigationManager::WebLoadParams params(
+    GURL(base::SysNSStringToUTF8(url.absoluteString)));
+  params.transition_type = ui::PAGE_TRANSITION_TYPED;
+  self.webStateList->GetActiveWebState()->GetNavigationManager()->LoadURLWithParams(params);
+}
+
 #pragma mark - UIGestureRecognizerDelegate
 
-// Always return yes, as this tap should work with various recognizers,
-// including UITextTapRecognizer, UILongPressGestureRecognizer,
-// UIScrollViewPanGestureRecognizer and others.
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)gestureRecognizer
     shouldRecognizeSimultaneouslyWithGestureRecognizer:
         (UIGestureRecognizer*)otherGestureRecognizer {
+  // Prevent SideSwipeCoordinator gestures from interfering with custom right-to-left swipe
+  if ([gestureRecognizer isKindOfClass:[UISwipeGestureRecognizer class]] &&
+      [(UISwipeGestureRecognizer*)gestureRecognizer
+          direction] == UISwipeGestureRecognizerDirectionLeft) {
+    return NO; // Custom swipe takes precedence
+  }
   return YES;
 }
 
-// Tap gestures should only be recognized within `contentArea`.
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer*)gesture {
-  CGPoint location = [gesture locationInView:self.view];
-
-  // Only allow touches on descendant views of `contentArea`.
-  UIView* hitView = [self.view hitTest:location withEvent:nil];
-  return [hitView isDescendantOfView:self.contentArea];
+  if ([gesture isKindOfClass:[UITapGestureRecognizer class]]) {
+    CGPoint location = [gesture locationInView:self.view];
+    // Only allow touches on descendant views of `contentArea`.
+    UIView* hitView = [self.view hitTest:location withEvent:nil];
+    return [hitView isDescendantOfView:self.contentArea];
+  }
+  return YES; // Allow swipe gestures to begin
 }
 
 #pragma mark - CardSwipeViewDelegate

@@ -310,7 +310,8 @@ source_set("ui_bundled") {
     "//ui/base",
     "//ui/gfx",
     "//url",
-
+    "//ios/chrome/browser/ui:ios_chrome_ui",
+    
     # Fake dependencies to break cycles
     "//ios/chrome/browser/settings/ui_bundled",
     "//ios/chrome/browser/sharing/ui_bundled:sharing_internal",
