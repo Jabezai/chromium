@@ -935,8 +935,16 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
   // initialisation (e.g. fetching variation seeds, load profiles' preferences,
   // migrating session storage, ...).
   UIWindow* window = sceneState.window;
-  window.rootViewController = [[LaunchScreenViewController alloc] init];
-  window.hidden = NO;
+  UIViewController* launchScreenController = [[LaunchScreenViewController alloc] init];
+  [UIView transitionWithView:window
+                    duration:0.3
+                    options:UIViewAnimationOptionTransitionCrossDissolve
+                  animations:^{
+                      window.rootViewController = launchScreenController;
+                  }
+                  completion:^(BOOL finished) {
+                      window.hidden = NO;
+                  }];
 
   if (appState.initStage < AppInitStage::kFinal) {
     return;
