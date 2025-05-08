@@ -6,12 +6,16 @@ import("//build/config/ios/rules.gni")
 
 source_set("ios_chrome_ui") {
   sources = [
+    "url_input/slide_transition_animator.h",
+    "url_input/slide_transition_animator.mm",
     "url_input/url_input_view_controller.h",
     "url_input/url_input_view_controller.mm",
   ]
 
   deps = [
     "//base",
+    "//ios/chrome/browser/omnibox/ui_bundled:model_interface",
+    "//ios/chrome/browser/toolbar/ui_bundled:coordinator",
     "//ios/chrome/common/ui/colors",
     "//ios/web",
   ]

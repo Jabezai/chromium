@@ -84,9 +84,9 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
-                    textColor:(UIColor*)textColor
-                    tintColor:(UIColor*)tintColor
-                isLensOverlay:(BOOL)isLensOverlay {
+                  textColor:(UIColor*)textColor
+                  tintColor:(UIColor*)tintColor
+              isLensOverlay:(BOOL)isLensOverlay {
   self = [super initWithFrame:frame];
   if (self) {
     if (tintColor) {
@@ -145,6 +145,15 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
           registerForTraitChanges:(traits)
                        withAction:@selector(updateTextProperitesOnTraitChange)];
     }
+
+    // Temporarily disable OmniboxKeyboardAccessoryView to resolve build error
+    // self.inputAccessoryView = [[OmniboxKeyboardAccessoryView alloc]
+    //     initWithButtons:@[@".", @".com", @"/"]
+    //            delegate:self
+    //         pasteTarget:self
+    //  templateURLService:nil
+    //           textField:self
+    //         helpHandler:nil];
   }
   return self;
 }

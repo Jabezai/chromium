@@ -164,11 +164,7 @@ enum HeaderBehaviour {
 #pragma mark - BVC
 
 // Note other delegates defined in the Delegates category header.
-@interface BrowserViewController () <CardSwipeViewDelegate,
-                                     FullscreenUIElement,
-                                     MainContentUI,
-                                     SideSwipeUIControllerDelegate,
-                                     UIGestureRecognizerDelegate,URLInputViewControllerDelegate> {
+@interface BrowserViewController () <CardSwipeViewDelegate, FullscreenUIElement, MainContentUI, SideSwipeUIControllerDelegate, UIGestureRecognizerDelegate, URLInputViewControllerDelegate> {
   // Identifier for each animation of an NTP opening.
   NSInteger _NTPAnimationIdentifier;
 
@@ -2549,27 +2545,35 @@ enum HeaderBehaviour {
   }
 }
 
-#pragma mark - URLInputViewControllerDelegate
+#pragma mark - Swipe Gesture Handling
 
 - (void)handleRightToLeftSwipe:(UISwipeGestureRecognizer*)gesture {
   if (gesture.state == UIGestureRecognizerStateEnded) {
     NSLog(@"Right-to-left swipe detected");
-    URLInputViewController* urlInputVC = [[URLInputViewController alloc] init];
-    urlInputVC.delegate = self;
-    UINavigationController* navController =
-        [[UINavigationController alloc] initWithRootViewController:urlInputVC];
-    navController.modalPresentationStyle = UIModalPresentationFormSheet;
-    [self presentViewController:navController animated:YES completion:nil];
+    URLInputViewController* swipeMenuVC = [[URLInputViewController alloc] init];
+    swipeMenuVC.toolbarCoordinator = self.toolbarCoordinator;
+    swipeMenuVC.delegate = self;
+    [self presentViewController:swipeMenuVC animated:YES completion:^{
+      NSLog(@"URLInputViewController presented");
+    }];
   }
 }
 
+#pragma mark - URLInputViewControllerDelegate
+
 - (void)urlInputViewController:(UIViewController*)controller
-                  didEnterURL:(NSURL*)url {
+                    didEnterURL:(NSURL*)url {
   // Load the URL in the current web view
   web::NavigationManager::WebLoadParams params(
-    GURL(base::SysNSStringToUTF8(url.absoluteString)));
+      GURL(base::SysNSStringToUTF8(url.absoluteString)));
   params.transition_type = ui::PAGE_TRANSITION_TYPED;
-  self.webStateList->GetActiveWebState()->GetNavigationManager()->LoadURLWithParams(params);
+  web::WebState* activeWebState = self.webStateList->GetActiveWebState();
+  if (activeWebState) {
+    activeWebState->GetNavigationManager()->LoadURLWithParams(params);
+    NSLog(@"Navigating to URL: %@, web state active: %d", url.absoluteString, activeWebState != nullptr);
+  } else {
+    NSLog(@"Error: No active web state for navigation to URL: %@", url.absoluteString);
+  }
 }
 
 #pragma mark - UIGestureRecognizerDelegate

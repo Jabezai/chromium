@@ -7,15 +7,24 @@
 
 #import <UIKit/UIKit.h>
 
-// Protocol for handling URL input actions.
+#import "ios/chrome/browser/omnibox/ui_bundled/omnibox_text_field_ios.h"
+#import "ios/chrome/browser/toolbar/ui_bundled/toolbar_coordinator.h"
+
+// Protocol for handling URL submission from the swipe menu.
 @protocol URLInputViewControllerDelegate <NSObject>
 - (void)urlInputViewController:(UIViewController*)controller
                   didEnterURL:(NSURL*)url;
 @end
 
-// View controller displaying a URL input bar.
-@interface URLInputViewController : UIViewController
+// View controller displaying the primary and secondary toolbars.
+@interface URLInputViewController : UIViewController <UIGestureRecognizerDelegate>
+
+// The toolbar coordinator providing the primary and secondary toolbars.
+@property(nonatomic, strong) ToolbarCoordinator* toolbarCoordinator;
+
+// Delegate to handle URL submission.
 @property(nonatomic, weak) id<URLInputViewControllerDelegate> delegate;
+
 @end
 
 #endif  // IOS_CHROME_BROWSER_UI_URL_INPUT_URL_INPUT_VIEW_CONTROLLER_H_
