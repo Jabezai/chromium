@@ -622,7 +622,7 @@ template("single_apple_toolchain") {
       # hardlink but ensure the file have distinct metadata (thus avoid the
       # error with ditto, see https://crbug.com/1042182).
       if (host_os == "mac") {
-        command = "rm -rf {{output}} && /bin/cp -Rc {{source}} {{output}}"
+        command = "rm -rf {{output}} && /bin/cp -R {{source}} {{output}}"
       } else {
         command = "rm -rf {{output}} && /bin/cp -Rld {{source}} {{output}}"
       }
