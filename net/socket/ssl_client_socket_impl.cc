@@ -281,7 +281,8 @@ SSLClientSocketImpl::SSLClientSocketImpl(
       host_and_port_(host_and_port),
       ssl_config_(ssl_config),
       signature_result_(kSSLClientSocketNoPendingResult),
-      net_log_(stream_socket_->NetLog()) {
+      net_log_(stream_socket_->NetLog()),
+      url_("https://" + host_and_port.host() + ":" + base::NumberToString(host_and_port.port())) {
   CHECK(context_);
 }
 
@@ -871,8 +872,22 @@ int SSLClientSocketImpl::DoHandshake() {
       return ERR_IO_PENDING;
     }
 
-    LOG(ERROR) << "handshake failed; returned " << rv << ", SSL error code "
-               << ssl_error << ", net_error " << net_error;
+    // Enhanced logging with OpenSSL error stack
+    unsigned long err_code = ERR_get_error();
+    std::string openssl_errors;
+    while (err_code != 0) {
+      char err_buf[256];
+      ERR_error_string_n(err_code, err_buf, sizeof(err_buf));
+      openssl_errors += std::string(err_buf) + "; ";
+      err_code = ERR_get_error();
+    }
+    LOG(ERROR) << "handshake failed; returned " << rv
+               << ", SSL error code " << ssl_error
+               << ", net_error " << net_error
+               << ", URL: " << url_.spec()
+               << ", Host: " << url_.host()
+               << ", Port: " << url_.port()
+               << ", OpenSSL errors: " << (openssl_errors.empty() ? "none" : openssl_errors);
     NetLogOpenSSLError(net_log_, NetLogEventType::SSL_HANDSHAKE_ERROR,
                        net_error, ssl_error, error_info);
   }

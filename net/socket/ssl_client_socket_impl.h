@@ -35,6 +35,7 @@
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "third_party/boringssl/src/include/openssl/base.h"
 #include "third_party/boringssl/src/include/openssl/ssl.h"
+#include "url/gurl.h"
 
 namespace crypto {
 class OpenSSLErrStackTracer;
@@ -170,14 +171,14 @@ class SSLClientSocketImpl : public SSLClientSocket,
 
   // Callbacks for operations with the private key.
   ssl_private_key_result_t PrivateKeySignCallback(uint8_t* out,
-                                                  size_t* out_len,
-                                                  size_t max_out,
-                                                  uint16_t algorithm,
-                                                  const uint8_t* in,
-                                                  size_t in_len);
+                                                 size_t* out_len,
+                                                 size_t max_out,
+                                                 uint16_t algorithm,
+                                                 const uint8_t* in,
+                                                 size_t in_len);
   ssl_private_key_result_t PrivateKeyCompleteCallback(uint8_t* out,
-                                                      size_t* out_len,
-                                                      size_t max_out);
+                                                     size_t* out_len,
+                                                     size_t max_out);
 
   void OnPrivateKeyComplete(Error error, const std::vector<uint8_t>& signature);
 
@@ -305,6 +306,7 @@ class SSLClientSocketImpl : public SSLClientSocket,
   scoped_refptr<SSLPrivateKey> client_private_key_;
 
   NetLogWithSource net_log_;
+  GURL url_; // Added for enhanced SSL handshake logging
   base::WeakPtrFactory<SSLClientSocketImpl> weak_factory_{this};
 };
 
