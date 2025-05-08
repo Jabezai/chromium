@@ -29,39 +29,59 @@ constexpr CGFloat kPaddingHeight = 50;
 
 #pragma mark - UIViewController
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self beginAppearanceTransition:YES animated:animated];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self endAppearanceTransition];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self beginAppearanceTransition:NO animated:animated];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    [self endAppearanceTransition];
+}
+
 - (void)viewDidLoad {
-  self.detailView = [self createStatusView];
-  [super viewDidLoad];
-  // Override the accessibility ID defined in LaunchScreenViewController.
-  self.view.accessibilityIdentifier =
-      first_run::kEnterpriseLoadingScreenAccessibilityIdentifier;
-  if (@available(iOS 17, *)) {
-    NSArray<UITrait>* traits = TraitCollectionSetForTraits(
-        @[ UITraitPreferredContentSizeCategory.class ]);
-    __weak EnterpriseLoadScreenViewController* weakSelf = self;
-    UITraitChangeHandler handler = ^(id<UITraitEnvironment> traitEnvironment,
-                                     UITraitCollection* previousCollection) {
-      // Limit the size of text to avoid truncation.
-      weakSelf.loadingLabel.font = PreferredFontForTextStyleWithMaxCategory(
-          UIFontTextStyleBody,
-          weakSelf.traitCollection.preferredContentSizeCategory,
-          UIContentSizeCategoryExtraExtraExtraLarge);
-    };
-    [self registerForTraitChanges:traits withHandler:handler];
-  }
+    self.detailView = [self createStatusView];
+    [super viewDidLoad];
+    // Override the accessibility ID defined in LaunchScreenViewController.
+    self.view.accessibilityIdentifier =
+        first_run::kEnterpriseLoadingScreenAccessibilityIdentifier;
+    if (@available(iOS 17, *)) {
+        NSArray<UITrait>* traits = TraitCollectionSetForTraits(
+            @[ UITraitPreferredContentSizeCategory.class ]);
+        __weak EnterpriseLoadScreenViewController* weakSelf = self;
+        UITraitChangeHandler handler = ^(id<UITraitEnvironment> traitEnvironment,
+                                         UITraitCollection* previousCollection) {
+            // Limit the size of text to avoid truncation.
+            weakSelf.loadingLabel.font = PreferredFontForTextStyleWithMaxCategory(
+                UIFontTextStyleBody,
+                weakSelf.traitCollection.preferredContentSizeCategory,
+                UIContentSizeCategoryExtraExtraExtraLarge);
+        };
+        [self registerForTraitChanges:traits withHandler:handler];
+    }
 }
 
 #if !defined(__IPHONE_17_0) || __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_17_0
 - (void)traitCollectionDidChange:(UITraitCollection*)previousTraitCollection {
-  [super traitCollectionDidChange:previousTraitCollection];
-  if (@available(iOS 17, *)) {
-    return;
-  }
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (@available(iOS 17, *)) {
+        return;
+    }
 
-  // Limit the size of text to avoid truncation.
-  self.loadingLabel.font = PreferredFontForTextStyleWithMaxCategory(
-      UIFontTextStyleBody, self.traitCollection.preferredContentSizeCategory,
-      UIContentSizeCategoryExtraExtraExtraLarge);
+    // Limit the size of text to avoid truncation.
+    self.loadingLabel.font = PreferredFontForTextStyleWithMaxCategory(
+        UIFontTextStyleBody, self.traitCollection.preferredContentSizeCategory,
+        UIContentSizeCategoryExtraExtraExtraLarge);
 }
 #endif
 
@@ -70,44 +90,44 @@ constexpr CGFloat kPaddingHeight = 50;
 // Creates and configures the status view which contains the loading spinner and
 // loading text.
 - (UIStackView*)createStatusView {
-  self.loadingLabel = [[UILabel alloc] init];
-  // Chrome's localization utilities aren't available at this stage, so this
-  // method uses the native iOS API.
-  self.loadingLabel.text =
-      NSLocalizedString(@"IDS_IOS_FIRST_RUN_LAUNCH_SCREEN_ENTERPRISE", @"");
+    self.loadingLabel = [[UILabel alloc] init];
+    // Chrome's localization utilities aren't available at this stage, so this
+    // method uses the native iOS API.
+    self.loadingLabel.text =
+        NSLocalizedString(@"IDS_IOS_FIRST_RUN_LAUNCH_SCREEN_ENTERPRISE", @"");
 
-  // Limit the size of text to avoid truncation.
-  self.loadingLabel.font = PreferredFontForTextStyleWithMaxCategory(
-      UIFontTextStyleBody, self.traitCollection.preferredContentSizeCategory,
-      UIContentSizeCategoryExtraExtraExtraLarge);
+    // Limit the size of text to avoid truncation.
+    self.loadingLabel.font = PreferredFontForTextStyleWithMaxCategory(
+        UIFontTextStyleBody, self.traitCollection.preferredContentSizeCategory,
+        UIContentSizeCategoryExtraExtraExtraLarge);
 
-  self.loadingLabel.numberOfLines = 0;
-  self.loadingLabel.textColor = [UIColor colorNamed:kTextSecondaryColor];
-  self.loadingLabel.textAlignment = NSTextAlignmentCenter;
+    self.loadingLabel.numberOfLines = 0;
+    self.loadingLabel.textColor = [UIColor colorNamed:kTextSecondaryColor];
+    self.loadingLabel.textAlignment = NSTextAlignmentCenter;
 
-  UIActivityIndicatorView* spinner = [[UIActivityIndicatorView alloc] init];
-  [spinner startAnimating];
+    UIActivityIndicatorView* spinner = [[UIActivityIndicatorView alloc] init];
+    [spinner startAnimating];
 
-  UIView* spacing = [[UIView alloc] init];
-  spacing.translatesAutoresizingMaskIntoConstraints = NO;
+    UIView* spacing = [[UIView alloc] init];
+    spacing.translatesAutoresizingMaskIntoConstraints = NO;
 
-  UIView* bottomPadding = [[UIView alloc] init];
-  bottomPadding.translatesAutoresizingMaskIntoConstraints = NO;
+    UIView* bottomPadding = [[UIView alloc] init];
+    bottomPadding.translatesAutoresizingMaskIntoConstraints = NO;
 
-  UIStackView* statusStackView =
-      [[UIStackView alloc] initWithArrangedSubviews:@[
-        spinner, spacing, self.loadingLabel, bottomPadding
-      ]];
-  statusStackView.axis = UILayoutConstraintAxisVertical;
-  statusStackView.translatesAutoresizingMaskIntoConstraints = NO;
-  statusStackView.alignment = UIStackViewAlignmentCenter;
-  statusStackView.spacing = UIStackViewSpacingUseSystem;
+    UIStackView* statusStackView =
+        [[UIStackView alloc] initWithArrangedSubviews:@[
+            spinner, spacing, self.loadingLabel, bottomPadding
+        ]];
+    statusStackView.axis = UILayoutConstraintAxisVertical;
+    statusStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    statusStackView.alignment = UIStackViewAlignmentCenter;
+    statusStackView.spacing = UIStackViewSpacingUseSystem;
 
-  [NSLayoutConstraint activateConstraints:@[
-    [spacing.heightAnchor constraintEqualToConstant:kSpacingHeight],
-    [bottomPadding.heightAnchor constraintEqualToConstant:kPaddingHeight]
-  ]];
-  return statusStackView;
+    [NSLayoutConstraint activateConstraints:@[
+        [spacing.heightAnchor constraintEqualToConstant:kSpacingHeight],
+        [bottomPadding.heightAnchor constraintEqualToConstant:kPaddingHeight]
+    ]];
+    return statusStackView;
 }
 
 @end

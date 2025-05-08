@@ -17,21 +17,41 @@
 
 #pragma mark - UIViewController
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self beginAppearanceTransition:YES animated:animated];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self endAppearanceTransition];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self beginAppearanceTransition:NO animated:animated];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    [self endAppearanceTransition];
+}
+
 - (void)viewDidLoad {
-  self.detailView = [self createSpinnerView];
-  [super viewDidLoad];
-  // Override the accessibility ID defined in LaunchScreenViewController.
-  self.view.accessibilityIdentifier =
-      kIdleTimeoutLaunchScreenAccessibilityIdentifier;
+    self.detailView = [self createSpinnerView];
+    [super viewDidLoad];
+    // Override the accessibility ID defined in LaunchScreenViewController.
+    self.view.accessibilityIdentifier =
+        kIdleTimeoutLaunchScreenAccessibilityIdentifier;
 }
 
 #pragma mark - Private
 
 // Creates the activity indicator view and starts its animation.
 - (UIView*)createSpinnerView {
-  UIActivityIndicatorView* spinner = [[UIActivityIndicatorView alloc] init];
-  [spinner startAnimating];
-  return spinner;
+    UIActivityIndicatorView* spinner = [[UIActivityIndicatorView alloc] init];
+    [spinner startAnimating];
+    return spinner;
 }
 
 @end

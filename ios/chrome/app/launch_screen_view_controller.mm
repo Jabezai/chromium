@@ -8,7 +8,6 @@
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
 
 namespace {
-
 // All the following values are from "ios/chrome/app/resources/LaunchScreen.xib"
 // and should be in sync so that the transition between app launch screen and
 // the launch screen view is invisible for the users.
@@ -29,64 +28,84 @@ constexpr CGFloat kStatusWidth = 195;
 
 #pragma mark - UIViewController
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self beginAppearanceTransition:YES animated:animated];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self endAppearanceTransition];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self beginAppearanceTransition:NO animated:animated];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    [self endAppearanceTransition];
+}
+
 - (void)viewDidLoad {
-  [super viewDidLoad];
-  UIView* view = self.view;
-  view.accessibilityIdentifier =
-      first_run::kLaunchScreenAccessibilityIdentifier;
+    [super viewDidLoad];
+    UIView* view = self.view;
+    view.accessibilityIdentifier =
+        first_run::kLaunchScreenAccessibilityIdentifier;
 
-  view.backgroundColor = [UIColor colorNamed:kBackgroundColor];
+    view.backgroundColor = [UIColor colorNamed:kBackgroundColor];
 
-  UIImageView* logo = [self createLogoView];
-  UIImageView* brand = [self createBrandView];
-  NSArray<UIView*>* arrangedSubviews = self.detailView == nil
-                                           ? @[ logo, brand ]
-                                           : @[ logo, self.detailView, brand ];
-  UIStackView* mainStackView =
-      [[UIStackView alloc] initWithArrangedSubviews:arrangedSubviews];
-  mainStackView.axis = UILayoutConstraintAxisVertical;
-  mainStackView.translatesAutoresizingMaskIntoConstraints = NO;
-  mainStackView.distribution = UIStackViewDistributionEqualSpacing;
-  mainStackView.alignment = UIStackViewAlignmentCenter;
+    UIImageView* logo = [self createLogoView];
+    UIImageView* brand = [self createBrandView];
+    NSArray<UIView*>* arrangedSubviews = self.detailView == nil
+                                            ? @[ logo, brand ]
+                                            : @[ logo, self.detailView, brand ];
+    UIStackView* mainStackView =
+        [[UIStackView alloc] initWithArrangedSubviews:arrangedSubviews];
+    mainStackView.axis = UILayoutConstraintAxisVertical;
+    mainStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    mainStackView.distribution = UIStackViewDistributionEqualSpacing;
+    mainStackView.alignment = UIStackViewAlignmentCenter;
 
-  [view addSubview:mainStackView];
+    [view addSubview:mainStackView];
 
-  [NSLayoutConstraint activateConstraints:@[
-    [logo.widthAnchor constraintEqualToAnchor:view.widthAnchor
-                                   multiplier:kLogoMultiplier],
-    [logo.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
-    [brand.bottomAnchor
-        constraintEqualToAnchor:view.layoutMarginsGuide.bottomAnchor
-                       constant:-kBottomMargin],
-    [brand.widthAnchor constraintEqualToConstant:kBrandWidth],
-    [mainStackView.widthAnchor constraintEqualToAnchor:view.widthAnchor],
-    [mainStackView.centerXAnchor constraintEqualToAnchor:view.centerXAnchor],
-  ]];
-  if (self.detailView) {
-    [self.detailView.widthAnchor constraintEqualToConstant:kStatusWidth]
-        .active = YES;
-  }
+    [NSLayoutConstraint activateConstraints:@[
+        [logo.widthAnchor constraintEqualToAnchor:view.widthAnchor
+                                      multiplier:kLogoMultiplier],
+        [logo.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
+        [brand.bottomAnchor
+            constraintEqualToAnchor:view.layoutMarginsGuide.bottomAnchor
+                           constant:-kBottomMargin],
+        [brand.widthAnchor constraintEqualToConstant:kBrandWidth],
+        [mainStackView.widthAnchor constraintEqualToAnchor:view.widthAnchor],
+        [mainStackView.centerXAnchor constraintEqualToAnchor:view.centerXAnchor],
+    ]];
+    if (self.detailView) {
+        [self.detailView.widthAnchor constraintEqualToConstant:kStatusWidth]
+            .active = YES;
+    }
 }
 
 #pragma mark - Private
 
 // Creates and configures the logo image view.
 - (UIImageView*)createLogoView {
-  UIImage* logo = [UIImage imageNamed:@"launchscreen_app_logo"];
-  UIImageView* logoImageView = [[UIImageView alloc] initWithImage:logo];
-  logoImageView.contentMode = UIViewContentModeScaleAspectFit;
-  logoImageView.translatesAutoresizingMaskIntoConstraints = NO;
-  return logoImageView;
+    UIImage* logo = [UIImage imageNamed:@"launchscreen_app_logo"];
+    UIImageView* logoImageView = [[UIImageView alloc] initWithImage:logo];
+    logoImageView.contentMode = UIViewContentModeScaleAspectFit;
+    logoImageView.translatesAutoresizingMaskIntoConstraints = NO;
+    return logoImageView;
 }
 
 // Creates and configures the brand name image.
 - (UIImageView*)createBrandView {
-  UIImage* brandNameLogo = [UIImage imageNamed:@"launchscreen_brand_name"];
-  UIImageView* brandImageView =
-      [[UIImageView alloc] initWithImage:brandNameLogo];
-  brandImageView.contentMode = UIViewContentModeScaleAspectFit;
-  brandImageView.translatesAutoresizingMaskIntoConstraints = NO;
-  return brandImageView;
+    UIImage* brandNameLogo = [UIImage imageNamed:@"launchscreen_brand_name"];
+    UIImageView* brandImageView =
+        [[UIImageView alloc] initWithImage:brandNameLogo];
+    brandImageView.contentMode = UIViewContentModeScaleAspectFit;
+    brandImageView.translatesAutoresizingMaskIntoConstraints = NO;
+    return brandImageView;
 }
 
 @end
