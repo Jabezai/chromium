@@ -130,6 +130,16 @@ typedef struct {
 // Command handler for omnibox commands.
 @property(nonatomic, weak) id<OmniboxCommands> omniboxCommandsHandler;
 
+// Property to control toolbar visibility.
+@property(nonatomic, assign) BOOL hideToolbars;
+
+// Constraints for full-screen and toolbar-visible layouts.
+@property(nonatomic, strong) NSArray<NSLayoutConstraint*>* contentAreaFullScreenConstraints;
+@property(nonatomic, strong) NSArray<NSLayoutConstraint*>* contentAreaWithToolbarsConstraints;
+
+// Method to update content area constraints based on hideToolbars.
+- (void)updateContentAreaConstraints;
+
 // Opens a new tab as if originating from `originPoint` and `focusOmnibox`.
 - (void)openNewTabFromOriginPoint:(CGPoint)originPoint
                      focusOmnibox:(BOOL)focusOmnibox

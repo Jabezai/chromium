@@ -111,6 +111,7 @@
 #import "ui/base/l10n/l10n_util.h"
 #import "ios/chrome/browser/ui/url_input/url_input_view_controller.h"
 #import "base/strings/sys_string_conversions.h"
+#import <WebKit/WebKit.h>
 
 namespace {
 
@@ -231,6 +232,9 @@ enum HeaderBehaviour {
 
   // Used to add or cancel a page placeholder for next navigation.
   raw_ptr<PagePlaceholderBrowserAgent> _pagePlaceholderBrowserAgent;
+
+  UIPanGestureRecognizer* _contentPanGestureRecognizer;
+
 }
 
 // Activates/deactivates the object. This will enable/disable the ability for
@@ -329,6 +333,8 @@ enum HeaderBehaviour {
 // Provider used to offload SceneStateBrowserAgent usage from BVC.
 @property(nonatomic, strong) SafeAreaProvider* safeAreaProvider;
 
+@property(nonatomic, strong) UIPanGestureRecognizer* contentPanGestureRecognizer;
+
 @end
 
 @implementation BrowserViewController
@@ -347,6 +353,7 @@ enum HeaderBehaviour {
     _browserContainerViewController = browserContainerViewController;
     _keyCommandsProvider = keyCommandsProvider;
     _sideSwipeCoordinator = dependencies.sideSwipeCoordinator;
+    self.hideToolbars = YES;
     [_sideSwipeCoordinator setSideSwipeUIControllerDelegate:self];
     [_sideSwipeCoordinator setCardSwipeViewDelegate:self];
     _bookmarksCoordinator = dependencies.bookmarksCoordinator;
@@ -517,7 +524,7 @@ enum HeaderBehaviour {
   }
 
   if (!IsRegularXRegularSizeClass(self)) {
-    if (self.toolbarCoordinator.primaryToolbarViewController.view) {
+    if (self.toolbarCoordinator.primaryToolbarViewController.view && !self.hideToolbars) {
       [results
           addObject:[HeaderDefinition
                         definitionWithView:self.toolbarCoordinator
@@ -530,7 +537,7 @@ enum HeaderBehaviour {
       [results addObject:[HeaderDefinition definitionWithView:self.tabStripView
                                               headerBehaviour:Hideable]];
     }
-    if (self.toolbarCoordinator.primaryToolbarViewController.view) {
+    if (self.toolbarCoordinator.primaryToolbarViewController.view && !self.hideToolbars) {
       [results
           addObject:[HeaderDefinition
                         definitionWithView:self.toolbarCoordinator
@@ -854,8 +861,6 @@ enum HeaderBehaviour {
 
   self.contentArea.frame = initialViewsRect;
 
-  // Create the typing shield.  It is initially hidden, and is made visible when
-  // the keyboard appears.
   self.typingShield = [[UIButton alloc] initWithFrame:initialViewsRect];
   self.typingShield.hidden = YES;
   self.typingShield.autoresizingMask = initialViewAutoresizing;
@@ -876,7 +881,6 @@ enum HeaderBehaviour {
   [self.view addSubview:self.typingShield];
   [super viewDidLoad];
 
-  // Install fake status bar for iPad iOS7
   [self installFakeStatusBar];
 
   [self buildToolbarAndTabStrip];
@@ -884,6 +888,13 @@ enum HeaderBehaviour {
   [self addConstraintsToToolbar];
 
   [_sideSwipeCoordinator addHorizontalGesturesToView:self.view];
+
+  if (self.hideToolbars) {
+    self.toolbarCoordinator.primaryToolbarViewController.view.hidden = YES;
+    self.toolbarCoordinator.secondaryToolbarViewController.view.hidden = YES;
+    self.primaryToolbarHeightConstraint.constant = 0;
+    self.secondaryToolbarHeightConstraint.constant = 0;
+  }
 
   // Add custom right-to-left swipe gesture recognizer
   UISwipeGestureRecognizer* swipeGesture = [[UISwipeGestureRecognizer alloc]
@@ -902,6 +913,13 @@ enum HeaderBehaviour {
   [self.contentAreaGestureRecognizer setCancelsTouchesInView:NO];
   [self.contentArea addGestureRecognizer:self.contentAreaGestureRecognizer];
 
+  // Add a pan gesture recognizer to log swipe gestures
+  self.contentPanGestureRecognizer = [[UIPanGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(handleContentPanGesture:)];
+  self.contentPanGestureRecognizer.delegate = self;
+  [self.contentArea addGestureRecognizer:self.contentPanGestureRecognizer];
+
   self.view.backgroundColor = [UIColor colorNamed:kBackgroundColor];
   if (_isOffTheRecord) {
     self.view.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
@@ -916,6 +934,26 @@ enum HeaderBehaviour {
     };
     [self registerForTraitChanges:traits withHandler:handler];
   }
+}
+
+- (void)handleContentPanGesture:(UIPanGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateChanged) {
+        CGPoint translation = [gesture translationInView:self.contentArea];
+        NSString *swipeDirection = translation.y > 0 ? @"Down" : @"Up";
+        NSLog(@"Swipe detected: %@", swipeDirection);
+        NSLog(@"Translation: %@", NSStringFromCGPoint(translation));
+
+        // Log scroll view state if a web view is present
+        if (self.currentWebState) {
+            id<CRWWebViewProxy> webViewProxy = self.currentWebState->GetWebViewProxy();
+            CRWWebViewScrollViewProxy *scrollViewProxy = webViewProxy.scrollViewProxy;
+            if (scrollViewProxy) {
+                NSLog(@"ScrollView contentOffset: %@", NSStringFromCGPoint(scrollViewProxy.contentOffset));
+                NSLog(@"ScrollView contentSize: %@", NSStringFromCGSize(scrollViewProxy.contentSize));
+                NSLog(@"ScrollView scrollEnabled: %d", scrollViewProxy.scrollEnabled);
+            }
+        }
+    }
 }
 
 - (void)viewSafeAreaInsetsDidChange {
@@ -1327,63 +1365,70 @@ enum HeaderBehaviour {
 
 // Sets up the constraints on the toolbar.
 - (void)addConstraintsToPrimaryToolbar {
-  NSLayoutYAxisAnchor* topAnchor;
-  // On iPhone, the toolbar is underneath the top of the screen.
-  // On iPad, it depends:
-  // - if the window is compact, it is like iPhone, underneath the top of the
-  // screen.
-  // - if the window is regular, it is underneath the tab strip.
-  if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_PHONE ||
-      !IsRegularXRegularSizeClass(self)) {
-    topAnchor = self.view.topAnchor;
-  } else {
-    topAnchor = self.tabStripView.bottomAnchor;
-  }
+    // Skip adding constraints if toolbars are hidden
+    if (self.hideToolbars) {
+        return;
+    }
 
-  // Only add leading and trailing constraints once as they are never updated.
-  // This uses the existence of `primaryToolbarOffsetConstraint` as a proxy for
-  // whether we've already added the leading and trailing constraints.
-  if (!self.primaryToolbarOffsetConstraint) {
-    [NSLayoutConstraint activateConstraints:@[
-      [self.toolbarCoordinator.primaryToolbarViewController.view.leadingAnchor
-          constraintEqualToAnchor:[self view].leadingAnchor],
-      [self.toolbarCoordinator.primaryToolbarViewController.view.trailingAnchor
-          constraintEqualToAnchor:[self view].trailingAnchor],
-    ]];
-  }
+    NSLayoutYAxisAnchor* topAnchor;
+    // On iPhone, the toolbar is underneath the top of the screen.
+    // On iPad, it depends:
+    // - if the window is compact, it is like iPhone, underneath the top of the screen.
+    // - if the window is regular, it is underneath the tab strip.
+    if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_PHONE ||
+        !IsRegularXRegularSizeClass(self)) {
+        topAnchor = self.view.topAnchor;
+    } else {
+        topAnchor = self.tabStripView.bottomAnchor;
+    }
 
-  // Offset and Height can be updated, so reset first.
-  self.primaryToolbarOffsetConstraint.active = NO;
-  self.primaryToolbarHeightConstraint.active = NO;
+    // Only add leading and trailing constraints once as they are never updated.
+    // This uses the existence of `primaryToolbarOffsetConstraint` as a proxy for
+    // whether we've already added the leading and trailing constraints.
+    if (!self.primaryToolbarOffsetConstraint) {
+        [NSLayoutConstraint activateConstraints:@[
+            [self.toolbarCoordinator.primaryToolbarViewController.view.leadingAnchor
+                constraintEqualToAnchor:[self view].leadingAnchor],
+            [self.toolbarCoordinator.primaryToolbarViewController.view.trailingAnchor
+                constraintEqualToAnchor:[self view].trailingAnchor],
+        ]];
+    }
 
-  // Create a constraint for the vertical positioning of the toolbar.
-  UIView* primaryView =
-      self.toolbarCoordinator.primaryToolbarViewController.view;
-  self.primaryToolbarOffsetConstraint =
-      [primaryView.topAnchor constraintEqualToAnchor:topAnchor];
+    // Offset and Height can be updated, so reset first.
+    self.primaryToolbarOffsetConstraint.active = NO;
+    self.primaryToolbarHeightConstraint.active = NO;
 
-  // Create a constraint for the height of the toolbar to include the unsafe
-  // area height.
-  self.primaryToolbarHeightConstraint = [primaryView.heightAnchor
-      constraintEqualToConstant:[self primaryToolbarHeightWithInset]];
+    // Create a constraint for the vertical positioning of the toolbar.
+    UIView* primaryView = self.toolbarCoordinator.primaryToolbarViewController.view;
+    self.primaryToolbarOffsetConstraint =
+        [primaryView.topAnchor constraintEqualToAnchor:topAnchor];
 
-  self.primaryToolbarOffsetConstraint.active = YES;
-  self.primaryToolbarHeightConstraint.active = YES;
+    // Create a constraint for the height of the toolbar to include the unsafe
+    // area height.
+    self.primaryToolbarHeightConstraint = [primaryView.heightAnchor
+        constraintEqualToConstant:[self primaryToolbarHeightWithInset]];
+
+    self.primaryToolbarOffsetConstraint.active = YES;
+    self.primaryToolbarHeightConstraint.active = YES;
 }
 
 - (void)addConstraintsToSecondaryToolbar {
-  // Create a constraint for the height of the toolbar to include the unsafe
-  // area height.
-  UIView* toolbarView =
-      self.toolbarCoordinator.secondaryToolbarViewController.view;
-  self.secondaryToolbarHeightConstraint = [toolbarView.heightAnchor
-      constraintEqualToConstant:[self secondaryToolbarHeightWithInset]];
-  // The bottom toolbar can be constraint to the keyboard in some cases.
-  self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired - 1;
-  self.secondaryToolbarHeightConstraint.active = YES;
-  AddSameConstraintsToSides(
-      self.view, toolbarView,
-      LayoutSides::kBottom | LayoutSides::kLeading | LayoutSides::kTrailing);
+    // Skip adding constraints if toolbars are hidden
+    if (self.hideToolbars) {
+        return;
+    }
+
+    // Create a constraint for the height of the toolbar to include the unsafe
+    // area height.
+    UIView* toolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
+    self.secondaryToolbarHeightConstraint = [toolbarView.heightAnchor
+        constraintEqualToConstant:[self secondaryToolbarHeightWithInset]];
+    // The bottom toolbar can be constraint to the keyboard in some cases.
+    self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired - 1;
+    self.secondaryToolbarHeightConstraint.active = YES;
+    AddSameConstraintsToSides(
+        self.view, toolbarView,
+        LayoutSides::kBottom | LayoutSides::kLeading | LayoutSides::kTrailing);
 }
 
 // Adds constraints to the primary and secondary toolbars, anchoring them to the
@@ -1407,158 +1452,185 @@ enum HeaderBehaviour {
 // Sets the correct frame and hierarchy for subviews and helper views.  Only
 // insert views on `initialLayout`.
 - (void)setUpViewLayout:(BOOL)initialLayout {
-  DCHECK([self isViewLoaded]);
+    DCHECK([self isViewLoaded]);
 
-  [self setupStatusBarLayout];
+    [self setupStatusBarLayout];
 
-  if (initialLayout) {
-    // Add the toolbars as child view controllers.
-    [self addChildViewController:self.toolbarCoordinator
-                                     .primaryToolbarViewController];
-    [self addChildViewController:self.toolbarCoordinator
-                                     .secondaryToolbarViewController];
+    if (initialLayout) {
+        // Add the tab strip on iPad if present, regardless of hideToolbars.
+        if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET && self.tabStripCoordinator) {
+            UIViewController* tabStripViewController = self.tabStripCoordinator.viewController;
+            [self addChildViewController:tabStripViewController];
+            self.tabStripView = tabStripViewController.view;
+            [self.view addSubview:self.tabStripView];
+            [tabStripViewController didMoveToParentViewController:self];
+            CGRect tabStripFrame = CGRectMake(0, self.headerOffset, self.view.bounds.size.width,
+                                              TabStripCollectionViewConstants.height);
+            self.tabStripView.frame = tabStripFrame;
+            self.tabStripView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
+                                                  UIViewAutoresizingFlexibleBottomMargin);
+        }
 
-    // Add the primary toolbar. On iPad, it should be in front of the tab strip
-    // because the tab strip slides behind it when showing the thumb strip.
-    UIView* primaryToolbarView =
-        self.toolbarCoordinator.primaryToolbarViewController.view;
-    if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
-      if (self.tabStripCoordinator) {
-        UIViewController* tabStripViewController =
-            self.tabStripCoordinator.viewController;
-        [self addChildViewController:tabStripViewController];
-        self.tabStripView = tabStripViewController.view;
-        [self.view addSubview:self.tabStripView];
-        [tabStripViewController didMoveToParentViewController:self];
-        CGRect tabStripFrame =
-            CGRectMake(0, self.headerOffset, self.view.bounds.size.width,
-                       TabStripCollectionViewConstants.height);
-        self.tabStripView.frame = tabStripFrame;
-        self.tabStripView.autoresizingMask =
-            (UIViewAutoresizingFlexibleWidth |
-             UIViewAutoresizingFlexibleBottomMargin);
-      }
-      [self.view insertSubview:primaryToolbarView
-                  aboveSubview:self.tabStripView];
-    } else {
-      [self.view addSubview:primaryToolbarView];
+        // Conditionally add toolbars only if hideToolbars is NO.
+        if (!self.hideToolbars) {
+            [self addChildViewController:self.toolbarCoordinator.primaryToolbarViewController];
+            UIView* primaryToolbarView = self.toolbarCoordinator.primaryToolbarViewController.view;
+            if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
+                [self.view insertSubview:primaryToolbarView aboveSubview:self.tabStripView];
+            } else {
+                [self.view addSubview:primaryToolbarView];
+            }
+            [self addChildViewController:self.toolbarCoordinator.secondaryToolbarViewController];
+            [self.view insertSubview:self.toolbarCoordinator.secondaryToolbarViewController.view
+                        aboveSubview:primaryToolbarView];
+        }
+
+        // Add guide kContentAreaGuide to the browser view.
+        [self.view addLayoutGuide:[[NamedGuide alloc] initWithName:kContentAreaGuide]];
+
+        // Configure the content area guide.
+        NamedGuide* contentAreaGuide = [NamedGuide guideWithName:kContentAreaGuide view:self.view];
+
+        // Define full-screen constraints (always defined).
+        self.contentAreaFullScreenConstraints = @[
+            [contentAreaGuide.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+            [contentAreaGuide.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+            [contentAreaGuide.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+            [contentAreaGuide.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
+        ];
+
+        // Define constraints with toolbars visible, only if toolbars are present.
+        if (!self.hideToolbars) {
+            UIView* primaryToolbarView = self.toolbarCoordinator.primaryToolbarViewController.view;
+            UIView* secondaryToolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
+            self.contentAreaWithToolbarsConstraints = @[
+                [contentAreaGuide.topAnchor constraintEqualToAnchor:primaryToolbarView.bottomAnchor],
+                [contentAreaGuide.bottomAnchor constraintEqualToAnchor:secondaryToolbarView.topAnchor],
+                [contentAreaGuide.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+                [contentAreaGuide.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
+            ];
+        }
+
+        // Activate the appropriate constraints based on hideToolbars.
+        [self updateContentAreaConstraints];
+
+        // Complete child UIViewController containment flow only for added views.
+        if (self.tabStripCoordinator) {
+            [self.tabStripCoordinator.viewController didMoveToParentViewController:self];
+        }
+        if (!self.hideToolbars) {
+            [self.toolbarCoordinator.primaryToolbarViewController didMoveToParentViewController:self];
+            [self.toolbarCoordinator.secondaryToolbarViewController didMoveToParentViewController:self];
+        }
     }
-    [self.view insertSubview:self.toolbarCoordinator
-                                 .secondaryToolbarViewController.view
-                aboveSubview:primaryToolbarView];
 
-    // TODO(crbug.com/40270239): Migrate kContentAreaGuide to LayoutGuideCenter.
-    // Add guide kContentAreaGuide to the browser view.
-    [self.view
-        addLayoutGuide:[[NamedGuide alloc] initWithName:kContentAreaGuide]];
+    // Resize the typing shield to cover the entire browser view and bring it to
+    // the front.
+    self.typingShield.frame = self.contentArea.frame;
+    if (initialLayout) {
+        [self.view bringSubviewToFront:self.typingShield];
+    }
 
-    // Configure the content area guide.
-    NamedGuide* contentAreaGuide = [NamedGuide guideWithName:kContentAreaGuide
-                                                        view:self.view];
+    // Move the overlay containers in front of the hierarchy.
+    [self updateOverlayContainerOrder];
+}
 
-    // TODO(crbug.com/40724393): Sometimes, `contentAreaGuide` and
-    // `primaryToolbarView` aren't in the same view hierarchy; this seems to be
-    // impossible,  but it does still happen. This will cause an exception in
-    // when activiating these constraints. To gather more information about this
-    // state, explciitly check the view hierarchy roots. Local variables are
-    // used so that the CHECK message is cleared.
-    UIView* rootViewForToolbar = ViewHierarchyRootForView(primaryToolbarView);
-    UIView* rootViewForContentGuide =
-        ViewHierarchyRootForView(contentAreaGuide.owningView);
-    CHECK_EQ(rootViewForToolbar, rootViewForContentGuide);
-
-    // Constrain top to bottom of top toolbar.
-    [contentAreaGuide.topAnchor
-        constraintEqualToAnchor:primaryToolbarView.bottomAnchor]
-        .active = YES;
-
-    LayoutSides contentSides = LayoutSides::kLeading | LayoutSides::kTrailing;
-    // If there's a bottom toolbar, the content area guide is constrained to
-    // its top.
-    UIView* secondaryToolbarView =
-        self.toolbarCoordinator.secondaryToolbarViewController.view;
-    [contentAreaGuide.bottomAnchor
-        constraintEqualToAnchor:secondaryToolbarView.topAnchor]
-        .active = YES;
-
-    AddSameConstraintsToSides(self.view, contentAreaGuide, contentSides);
-
-    // Complete child UIViewController containment flow now that the views are
-    // finished being added.
-    [self.tabStripCoordinator.viewController
-        didMoveToParentViewController:self];
-    [self.toolbarCoordinator.primaryToolbarViewController
-        didMoveToParentViewController:self];
-    [self.toolbarCoordinator.secondaryToolbarViewController
-        didMoveToParentViewController:self];
-  }
-
-  // Resize the typing shield to cover the entire browser view and bring it to
-  // the front.
-  self.typingShield.frame = self.contentArea.frame;
-  if (initialLayout) {
-    [self.view bringSubviewToFront:self.typingShield];
-  }
-
-  // Move the overlay containers in front of the hierarchy.
-  [self updateOverlayContainerOrder];
+- (void)updateContentAreaConstraints {
+    if (self.hideToolbars) {
+        [NSLayoutConstraint activateConstraints:self.contentAreaFullScreenConstraints];
+        if (self.contentAreaWithToolbarsConstraints) {
+            [NSLayoutConstraint deactivateConstraints:self.contentAreaWithToolbarsConstraints];
+        }
+    } else {
+        [NSLayoutConstraint activateConstraints:self.contentAreaWithToolbarsConstraints];
+        [NSLayoutConstraint deactivateConstraints:self.contentAreaFullScreenConstraints];
+    }
 }
 
 // Displays the current webState view.
 - (void)displayTabView {
-  UIView* view = self.viewForCurrentWebState;
-  DCHECK(view);
-  [self loadViewIfNeeded];
+    UIView* view = self.viewForCurrentWebState;
+    DCHECK(view);
+    [self loadViewIfNeeded];
 
-  if (!self.inNewTabAnimation) {
-    // TODO(crbug.com/40842406): -updateToolbar will move out of the BVC; make
-    // sure this comment remains accurate. Hide findbar.  `updateToolbar` will
-    // restore the findbar later.
-    [self.findInPageCommandsHandler hideFindUI];
-    [self.textZoomHandler hideTextZoomUI];
+    if (!self.inNewTabAnimation) {
+        [self.findInPageCommandsHandler hideFindUI];
+        [self.textZoomHandler hideTextZoomUI];
 
-    // Make new content visible, resizing it first as the orientation may
-    // have changed from the last time it was displayed.
-    CGRect viewFrame = self.contentArea.bounds;
-    if (!ios::provider::IsFullscreenSmoothScrollingSupported()) {
-      // If the Smooth Scrolling is on, the WebState view is not
-      // resized, and should always match the bounds of the content area.  When
-      // the provider is not initialized, viewport insets resize the webview, so
-      // they should be accounted for here to prevent animation jitter.
-      UIEdgeInsets viewportInsets =
-          self.fullscreenController->GetCurrentViewportInsets();
-      viewFrame = UIEdgeInsetsInsetRect(viewFrame, viewportInsets);
+        // Set the frame based on whether toolbars are hidden
+        CGRect viewFrame = self.hideToolbars ? self.view.bounds : self.contentArea.bounds;
+        if (!ios::provider::IsFullscreenSmoothScrollingSupported() && !self.hideToolbars) {
+            UIEdgeInsets viewportInsets = self.fullscreenController->GetCurrentViewportInsets();
+            viewFrame = UIEdgeInsetsInsetRect(viewFrame, viewportInsets);
+        }
+        view.frame = viewFrame;
+
+        // Log the initial frame of the view
+        NSLog(@"Initial view frame: %@", NSStringFromCGRect(view.frame));
+
+        if (!self.hideToolbars) {
+            [self updateToolbarState];
+        }
+
+        NewTabPageCoordinator* NTPCoordinator = self.ntpCoordinator;
+        if (NTPCoordinator.isNTPActiveForCurrentWebState) {
+            UIViewController* viewController = NTPCoordinator.viewController;
+            viewController.view.frame = [self ntpFrameForCurrentWebState];
+            [viewController.view layoutIfNeeded];
+            self.currentWebState->GetNavigationManager()->LoadIfNecessary();
+            self.browserContainerViewController.contentView = nil;
+            self.browserContainerViewController.contentViewController = viewController;
+            [NTPCoordinator constrainNamedGuideForFeedIPH];
+        } else {
+            self.browserContainerViewController.contentView = view;
+
+            // Adjust web view positioning when toolbars are hidden
+            if (self.currentWebState && self.hideToolbars) {
+                id<CRWWebViewProxy> webViewProxy = self.currentWebState->GetWebViewProxy();
+                CRWWebViewScrollViewProxy* scrollViewProxy = webViewProxy.scrollViewProxy;
+                if (scrollViewProxy) {
+                    // Set top inset for Dynamic Island
+                    CGFloat topInset = self.view.safeAreaInsets.top;
+                    scrollViewProxy.contentInset = UIEdgeInsetsMake(topInset, 0, 0, 0);
+                    scrollViewProxy.scrollIndicatorInsets = UIEdgeInsetsMake(topInset, 0, 0, 0);
+                    // Set initial content offset to respect the top inset
+                    scrollViewProxy.contentOffset = CGPointMake(0, -topInset);
+                    // Prevent bouncing to avoid revealing empty space
+                    scrollViewProxy.bounces = NO;
+                    // Disable scrolling to lock content in place
+                    scrollViewProxy.scrollEnabled = NO;
+                    // Ensure content size matches the view bounds to eliminate bottom space
+                    CGSize contentSize = scrollViewProxy.contentSize;
+                    CGFloat heightAdjustment = viewFrame.size.height - contentSize.height;
+                    if (heightAdjustment > 0) {
+                        scrollViewProxy.contentSize = CGSizeMake(contentSize.width, viewFrame.size.height);
+                    }
+
+                    // Log scroll view state after adjustments
+                    NSLog(@"Adjusted ScrollView contentOffset: %@", NSStringFromCGPoint(scrollViewProxy.contentOffset));
+                    NSLog(@"Adjusted ScrollView contentSize: %@", NSStringFromCGSize(scrollViewProxy.contentSize));
+                    NSLog(@"ScrollView scrollEnabled: %d", scrollViewProxy.scrollEnabled);
+
+                    // Force content size and offset to remain stable after a delay
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                        scrollViewProxy.contentSize = CGSizeMake(contentSize.width, viewFrame.size.height);
+                        scrollViewProxy.contentOffset = CGPointMake(0, -topInset);
+                        NSLog(@"Delayed ScrollView contentOffset: %@", NSStringFromCGPoint(scrollViewProxy.contentOffset));
+                        NSLog(@"Delayed ScrollView contentSize: %@", NSStringFromCGSize(scrollViewProxy.contentSize));
+                    });
+                }
+            }
+        }
+        if (ios::provider::IsFullscreenSmoothScrollingSupported()) {
+            self.fullscreenController->ResizeHorizontalViewport();
+        }
     }
-    view.frame = viewFrame;
 
-    [self updateToolbarState];
-
-    NewTabPageCoordinator* NTPCoordinator = self.ntpCoordinator;
-    if (NTPCoordinator.isNTPActiveForCurrentWebState) {
-      UIViewController* viewController = NTPCoordinator.viewController;
-      viewController.view.frame = [self ntpFrameForCurrentWebState];
-      [viewController.view layoutIfNeeded];
-      // TODO(crbug.com/41407753): For a newly created WebState, the session
-      // will not be restored until LoadIfNecessary call. Remove when fixed.
-      self.currentWebState->GetNavigationManager()->LoadIfNecessary();
-      self.browserContainerViewController.contentView = nil;
-      self.browserContainerViewController.contentViewController =
-          viewController;
-      [NTPCoordinator constrainNamedGuideForFeedIPH];
-    } else {
-      self.browserContainerViewController.contentView = view;
+    if (!self.hideToolbars) {
+        [self.toolbarCoordinator updateToolbar];
     }
-    // Resize horizontal viewport if Smooth Scrolling is on.
-    if (ios::provider::IsFullscreenSmoothScrollingSupported()) {
-      self.fullscreenController->ResizeHorizontalViewport();
-    }
-  }
 
-  // TODO(crbug.com/40842406): Remove this and let `ToolbarCoordinator` call the
-  // update, somehow. Toolbar needs to know when NTP isActive state changes.
-  [self.toolbarCoordinator updateToolbar];
-
-  [self updateWebStateVisibility:YES];
+    [self updateWebStateVisibility:YES];
 }
 
 - (void)updateOverlayContainerOrder {
@@ -1621,18 +1693,18 @@ enum HeaderBehaviour {
 // Returns the appropriate frame for the NTP.
 - (CGRect)ntpFrameForCurrentWebState {
   DCHECK(self.ntpCoordinator.isNTPActiveForCurrentWebState);
-  // NTP is laid out only in the visible part of the screen.
   UIEdgeInsets viewportInsets = UIEdgeInsetsZero;
-  if (!IsRegularXRegularSizeClass(self)) {
-    viewportInsets.bottom = [self secondaryToolbarHeightWithInset];
+
+  if (!self.hideToolbars) {
+    // Apply insets only when toolbars are visible
+    if (!IsRegularXRegularSizeClass(self)) {
+      viewportInsets.bottom = [self secondaryToolbarHeightWithInset];
+    }
+    if (!IsSplitToolbarMode(self) || _isOffTheRecord) {
+      viewportInsets.top = [self expandedTopToolbarHeight];
+    }
   }
 
-  // Add toolbar margin to the frame for every scenario except compact-width
-  // non-otr, as that is the only case where there isn't a primary toolbar.
-  // (see crbug.com/1063173)
-  if (!IsSplitToolbarMode(self) || _isOffTheRecord) {
-    viewportInsets.top = [self expandedTopToolbarHeight];
-  }
   return UIEdgeInsetsInsetRect(self.contentArea.bounds, viewportInsets);
 }
 
@@ -1917,8 +1989,10 @@ enum HeaderBehaviour {
 #pragma mark - FullscreenUIElement methods
 
 - (void)updateForFullscreenProgress:(CGFloat)progress {
-  [self updateHeadersForFullscreenProgress:progress];
-  [self updateFootersForFullscreenProgress:progress];
+  if (!self.hideToolbars) {
+      [self updateHeadersForFullscreenProgress:progress];
+      [self updateFootersForFullscreenProgress:progress];
+  }
   if (!ios::provider::IsFullscreenSmoothScrollingSupported()) {
     [self updateBrowserViewportForFullscreenProgress:progress];
   }
@@ -2054,7 +2128,10 @@ enum HeaderBehaviour {
   self.footerFullscreenProgress = progress;
 
   // Don't update the height of the secondary toolbar if it is hidden.
-  if (!IsSplitToolbarMode(self)) {
+  if (!IsSplitToolbarMode(self) || self.hideToolbars) {
+    if (self.hideToolbars) {
+      self.secondaryToolbarHeightConstraint.constant = 0;
+    }
     return;
   }
 
@@ -2085,14 +2162,16 @@ enum HeaderBehaviour {
     return;
   }
 
-  // Calculate the heights of the toolbars for `progress`.  `-toolbarHeight`
-  // returns the height of the toolbar extending below this view controller's
-  // safe area, so the unsafe top height must be added.
-  CGFloat top = AlignValueToPixel(
-      self.headerHeight + (progress - 1.0) * [self primaryToolbarHeightDelta]);
-  CGFloat bottom =
-      AlignValueToPixel([self secondaryToolbarHeightWithInset] +
-                        (progress - 1.0) * [self secondaryToolbarHeightDelta]);
+  CGFloat top = 0.0;
+  CGFloat bottom = 0.0;
+
+  if (!self.hideToolbars) {
+    // Only calculate toolbar-based insets if toolbars are visible
+    top = AlignValueToPixel(
+        self.headerHeight + (progress - 1.0) * [self primaryToolbarHeightDelta]);
+    bottom = AlignValueToPixel([self secondaryToolbarHeightWithInset] +
+                               (progress - 1.0) * [self secondaryToolbarHeightDelta]);
+  }
 
   [self updateContentPaddingForTopToolbarHeight:top bottomToolbarHeight:bottom];
 }
@@ -2102,14 +2181,26 @@ enum HeaderBehaviour {
 // on the the proxy's `shouldUseViewContentInset` property.
 - (void)updateContentPaddingForTopToolbarHeight:(CGFloat)topToolbarHeight
                             bottomToolbarHeight:(CGFloat)bottomToolbarHeight {
+  // Check if there’s a valid web state
   if (!self.currentWebState) {
     return;
   }
 
+  // Get the web view proxy to adjust its content insets
   id<CRWWebViewProxy> webViewProxy = self.currentWebState->GetWebViewProxy();
   UIEdgeInsets contentPadding = webViewProxy.contentInset;
-  contentPadding.top = topToolbarHeight;
-  contentPadding.bottom = bottomToolbarHeight;
+
+  if (self.hideToolbars) {
+    // When toolbars are hidden, remove padding to fill the screen fully
+    contentPadding.top = 0;
+    contentPadding.bottom = 0;
+  } else {
+    // When toolbars are visible, set padding based on toolbar heights
+    contentPadding.top = topToolbarHeight;
+    contentPadding.bottom = bottomToolbarHeight;
+  }
+
+  // Apply the updated insets to the web view
   webViewProxy.contentInset = contentPadding;
 }
 
@@ -2578,16 +2669,18 @@ enum HeaderBehaviour {
 
 #pragma mark - UIGestureRecognizerDelegate
 
-- (BOOL)gestureRecognizer:(UIGestureRecognizer*)gestureRecognizer
-    shouldRecognizeSimultaneouslyWithGestureRecognizer:
-        (UIGestureRecognizer*)otherGestureRecognizer {
-  // Prevent SideSwipeCoordinator gestures from interfering with custom right-to-left swipe
-  if ([gestureRecognizer isKindOfClass:[UISwipeGestureRecognizer class]] &&
-      [(UISwipeGestureRecognizer*)gestureRecognizer
-          direction] == UISwipeGestureRecognizerDirectionLeft) {
-    return NO; // Custom swipe takes precedence
-  }
-  return YES;
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    // Allow the pan gesture recognizer to work with other gestures
+    if (gestureRecognizer == self.contentPanGestureRecognizer) {
+        return YES;
+    }
+    // Existing logic for swipe gestures
+    if ([gestureRecognizer isKindOfClass:[UISwipeGestureRecognizer class]] &&
+        [(UISwipeGestureRecognizer *)gestureRecognizer direction] == UISwipeGestureRecognizerDirectionLeft) {
+        return NO; // Custom swipe takes precedence
+    }
+    return YES;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer*)gesture {
@@ -2749,28 +2842,29 @@ enum HeaderBehaviour {
       .accessibilityElementsHidden = NO;
 }
 
+#pragma mark - ContextualSheetPresenter Protocol Implementation
+
+- (void)insertContextualSheet:(UIView*)contextualSheet {
+  // Add the contextual sheet as a subview to the main view
+  [self.view addSubview:contextualSheet];
+  // Set up basic constraints to center the sheet and size it relative to the view
+  contextualSheet.translatesAutoresizingMaskIntoConstraints = NO;
+  [NSLayoutConstraint activateConstraints:@[
+    [contextualSheet.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+    [contextualSheet.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+    [contextualSheet.widthAnchor constraintEqualToAnchor:self.view.widthAnchor multiplier:0.9],
+    [contextualSheet.heightAnchor constraintEqualToAnchor:self.view.heightAnchor multiplier:0.5]
+  ]];
+}
+
 #pragma mark - LensPresentationDelegate
 
 - (CGRect)webContentAreaForLensCoordinator:(LensCoordinator*)lensCoordinator {
   DCHECK(lensCoordinator);
-
-  // The LensCoordinator needs the content area of the webView with the
-  // header and footer toolbars visible.
-  UIEdgeInsets viewportInsets = self.rootSafeAreaInsets;
-  if (!IsRegularXRegularSizeClass(self)) {
-    viewportInsets.bottom = [self secondaryToolbarHeightWithInset];
-  }
-
-  viewportInsets.top = [self expandedTopToolbarHeight];
-  return UIEdgeInsetsInsetRect(self.contentArea.bounds, viewportInsets);
+  // Return the bounds of the content area as the web content area
+  return self.contentArea.bounds;
 }
 
-#pragma mark - ContextualSheetPresenter
-
-- (void)insertContextualSheet:(UIView*)contextualSheet {
-  [self.view
-      insertSubview:contextualSheet
-       aboveSubview:self.toolbarCoordinator.primaryToolbarViewController.view];
-}
+// [Rest of the methods remain unchanged]
 
 @end
