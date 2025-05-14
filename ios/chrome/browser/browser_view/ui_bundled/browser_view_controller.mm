@@ -6,7 +6,6 @@
 
 #import "base/apple/bundle_locations.h"
 #import "base/apple/foundation_util.h"
-#import "base/ios/ios_util.h"
 #import "base/memory/raw_ptr.h"
 #import "base/metrics/histogram_functions.h"
 #import "base/metrics/user_metrics.h"
@@ -17,7 +16,6 @@
 #import "components/prefs/pref_service.h"
 #import "components/signin/public/identity_manager/identity_manager.h"
 #import "components/strings/grit/components_strings.h"
-#import "components/ukm/ios/ukm_url_recorder.h"
 #import "ios/chrome/browser/authentication/ui_bundled/re_signin_infobar_delegate.h"
 #import "ios/chrome/browser/bookmarks/ui_bundled/home/bookmarks_coordinator.h"
 #import "ios/chrome/browser/browser_container/ui_bundled/browser_container_view_controller.h"
@@ -55,7 +53,6 @@
 #import "ios/chrome/browser/reading_list/model/reading_list_browser_agent.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
-#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/public/commands/application_commands.h"
 #import "ios/chrome/browser/shared/public/commands/find_in_page_commands.h"
 #import "ios/chrome/browser/shared/public/commands/help_commands.h"
@@ -64,7 +61,6 @@
 #import "ios/chrome/browser/shared/public/commands/reading_list_add_command.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/commands/text_zoom_commands.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/ui/util/named_guide.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/shared/ui/util/url_with_title.h"
@@ -86,6 +82,7 @@
 #import "ios/chrome/browser/toolbar/ui_bundled/fullscreen/toolbars_size.h"
 #import "ios/chrome/browser/toolbar/ui_bundled/fullscreen/toolbars_size_broadcasting_util.h"
 #import "ios/chrome/browser/toolbar/ui_bundled/toolbar_coordinator.h"
+#import "ios/chrome/browser/ui/url_input/url_input_view_controller.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_browser_agent.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_params.h"
 #import "ios/chrome/browser/voice/ui_bundled/voice_search_notification_names.h"
@@ -103,24 +100,25 @@
 #import "ios/public/provider/chrome/browser/fullscreen/fullscreen_api.h"
 #import "ios/public/provider/chrome/browser/voice_search/voice_search_controller.h"
 #import "ios/web/public/ui/crw_web_view_proxy.h"
-#import "ios/web/public/ui/crw_web_view_scroll_view_proxy.h"
-#import "ios/web/public/web_state_observer_bridge.h"
 #import "net/base/apple/url_conversions.h"
 #import "services/metrics/public/cpp/ukm_builders.h"
 #import "ui/base/device_form_factor.h"
 #import "ui/base/l10n/l10n_util.h"
-#import "ios/chrome/browser/ui/url_input/url_input_view_controller.h"
-#import "base/strings/sys_string_conversions.h"
 #import <WebKit/WebKit.h>
+#import <objc/runtime.h>
+
+// File-level constant for top padding below Dynamic Island/status bar
+static const CGFloat kTopPadding = 8.0;
 
 namespace {
 
 enum HeaderBehaviour {
   // The header moves completely out of the screen.
   Hideable = 0,
-  // This header stay on screen and covers part of the content.
+  // This header stays on screen and covers part of the content.
   Overlap
 };
+
 }  // namespace
 
 #pragma mark - HeaderDefinition helper
@@ -162,21 +160,95 @@ enum HeaderBehaviour {
 
 @end
 
+#pragma mark - YourCustomSlideAnimator
+
+// Custom animator for sliding URLInputViewController in from the right.
+@interface YourCustomSlideAnimator : NSObject <UIViewControllerAnimatedTransitioning>
+@property(nonatomic, assign) BOOL isPresenting;
+- (instancetype)initWithIsPresenting:(BOOL)isPresenting;
+@end
+
+@implementation YourCustomSlideAnimator
+
+- (instancetype)initWithIsPresenting:(BOOL)isPresenting {
+  self = [super init];
+  if (self) {
+    _isPresenting = isPresenting;
+  }
+  return self;
+}
+
+- (NSTimeInterval)transitionDuration:(id<UIViewControllerContextTransitioning>)transitionContext {
+  return 0.3; // Duration of the animation
+}
+
+- (void)animateTransition:(id<UIViewControllerContextTransitioning>)transitionContext {
+  UIView *containerView = transitionContext.containerView;
+  UIViewController *toViewController = [transitionContext viewControllerForKey:UITransitionContextToViewControllerKey];
+  UIViewController *fromViewController = [transitionContext viewControllerForKey:UITransitionContextFromViewControllerKey];
+
+  if (self.isPresenting) {
+    // Slide in from the right
+    toViewController.view.frame = CGRectOffset(containerView.bounds, containerView.bounds.size.width, 0);
+    [containerView addSubview:toViewController.view];
+
+    [UIView animateWithDuration:[self transitionDuration:transitionContext]
+                     animations:^{
+                       toViewController.view.frame = containerView.bounds;
+                     }
+                     completion:^(BOOL finished) {
+                       [transitionContext completeTransition:finished];
+                     }];
+  } else {
+    // Slide out to the right
+    [UIView animateWithDuration:[self transitionDuration:transitionContext]
+                     animations:^{
+                       fromViewController.view.frame = CGRectOffset(containerView.bounds, containerView.bounds.size.width, 0);
+                     }
+                     completion:^(BOOL finished) {
+                       [fromViewController.view removeFromSuperview];
+                       [transitionContext completeTransition:finished];
+                     }];
+  }
+}
+
+@end
+
+#pragma mark - URLInputTransitioningDelegate
+
+// Transitioning delegate for URLInputViewController to manage custom slide animations.
+@interface URLInputTransitioningDelegate : NSObject <UIViewControllerTransitioningDelegate>
+@end
+
+@implementation URLInputTransitioningDelegate
+
+- (id<UIViewControllerAnimatedTransitioning>)animationControllerForPresentedController:(UIViewController *)presented
+                                                                  presentingController:(UIViewController *)presenting
+                                                                      sourceController:(UIViewController *)source {
+  return [[YourCustomSlideAnimator alloc] initWithIsPresenting:YES];
+}
+
+- (id<UIViewControllerAnimatedTransitioning>)animationControllerForDismissedController:(UIViewController *)dismissed {
+  return [[YourCustomSlideAnimator alloc] initWithIsPresenting:NO];
+}
+
+@end
+
 #pragma mark - BVC
 
 // Note other delegates defined in the Delegates category header.
-@interface BrowserViewController () <CardSwipeViewDelegate, FullscreenUIElement, MainContentUI, SideSwipeUIControllerDelegate, UIGestureRecognizerDelegate, URLInputViewControllerDelegate> {
+@interface BrowserViewController () <CardSwipeViewDelegate, FullscreenUIElement, MainContentUI, SideSwipeUIControllerDelegate, UIGestureRecognizerDelegate, UIScrollViewDelegate, URLInputViewControllerDelegate> {
   // Identifier for each animation of an NTP opening.
   NSInteger _NTPAnimationIdentifier;
 
   // Mediator for edge swipe gestures for page and tab navigation.
   SideSwipeCoordinator* _sideSwipeCoordinator;
 
-  // Keyboard commands provider.  It offloads most of the keyboard commands
+  // Keyboard commands provider. It offloads most of the keyboard commands
   // management off of the BVC.
   KeyCommandsProvider* _keyCommandsProvider;
 
-  // Used to display the Voice Search UI.  Nil if not visible.
+  // Used to display the Voice Search UI. Nil if not visible.
   id<VoiceSearchController> _voiceSearchController;
 
   // YES if Voice Search should be started when the new tab animation is
@@ -212,7 +284,7 @@ enum HeaderBehaviour {
   // The main content UI updater for the content displayed by this BVC.
   MainContentUIStateUpdater* _mainContentUIUpdater;
 
-  // The forwarder for web scroll view interation events.
+  // The forwarder for web scroll view interaction events.
   WebScrollViewMainContentUIForwarder* _webMainContentUIForwarder;
 
   // The updater that adjusts the toolbar's layout for fullscreen events.
@@ -221,7 +293,7 @@ enum HeaderBehaviour {
   // Fake status bar view used to blend the toolbar into the status bar.
   UIView* _fakeStatusBarView;
 
-  // The service used to load url parameters in current or new tab.
+  // Used to load url parameters in current or new tab.
   raw_ptr<UrlLoadingBrowserAgent> _urlLoadingBrowserAgent;
 
   // Used to report usage of a single Browser's tab.
@@ -233,8 +305,16 @@ enum HeaderBehaviour {
   // Used to add or cancel a page placeholder for next navigation.
   raw_ptr<PagePlaceholderBrowserAgent> _pagePlaceholderBrowserAgent;
 
+  // Backing ivar for mainContentUIState property.
+  MainContentUIState* _mainContentUIState;
+
+  // Backing ivar for logoAnimationControllerOwner property.
+  id<LogoAnimationControllerOwner> _logoAnimationControllerOwner;
+
   UIPanGestureRecognizer* _contentPanGestureRecognizer;
 
+  // Tracks the last known contentOffset to restore after frame updates.
+  CGPoint _lastContentOffset;
 }
 
 // Activates/deactivates the object. This will enable/disable the ability for
@@ -273,6 +353,8 @@ enum HeaderBehaviour {
 @property(nonatomic, strong) TabStripCoordinator* tabStripCoordinator;
 // A weak reference to the view of the tab strip on tablet.
 @property(nonatomic, weak) UIView* tabStripView;
+// Container view to enforce web view size
+@property(nonatomic, strong) UIView *containerView;
 
 // Returns the header views, all the chrome on top of the page, including the
 // ones that cannot be scrolled off screen by full screen.
@@ -311,8 +393,7 @@ enum HeaderBehaviour {
 // Height constraint for the primary toolbar.
 @property(nonatomic, strong) NSLayoutConstraint* primaryToolbarHeightConstraint;
 // Height constraint for the secondary toolbar.
-@property(nonatomic, strong)
-    NSLayoutConstraint* secondaryToolbarHeightConstraint;
+@property(nonatomic, strong) NSLayoutConstraint* secondaryToolbarHeightConstraint;
 // Current Fullscreen progress for the footers.
 @property(nonatomic, assign) CGFloat footerFullscreenProgress;
 // Y-dimension offset for placement of the header.
@@ -335,9 +416,30 @@ enum HeaderBehaviour {
 
 @property(nonatomic, strong) UIPanGestureRecognizer* contentPanGestureRecognizer;
 
+// Declare missing selectors
+- (void)updateOverlayContainerOrder;
+- (void)bringOverlayContainerToFront:(UIViewController*)containerViewController;
+- (UIViewController *)viewControllerToPresent;
+- (void)voiceSearchWillAppear;
+- (void)voiceSearchWillHide;
+- (void)updateBroadcastState;
+- (UIView *)viewForWebState:(web::WebState *)webState;
+- (void)setLastTapPointFromCommand:(CGPoint)originPoint;
+- (void)updateToolbarState;
+- (void)dismissPopups;
+- (void)updateUIOnTraitChange:(UITraitCollection *)previousTraitCollection;
+- (void)showTabStripView:(UIView *)tabStripView;
+- (CGRect)ntpFrameForCurrentWebState;
+- (void)handleRightToLeftSwipe:(UISwipeGestureRecognizer *)gesture;
+- (void)saveContentAreaTapLocation:(UIGestureRecognizer *)gestureRecognizer;
+- (void)updateBrowserViewportForFullscreenProgress:(CGFloat)progress;
+
 @end
 
 @implementation BrowserViewController
+
+@synthesize mainContentUIState = _mainContentUIState;
+@synthesize logoAnimationControllerOwner = _logoAnimationControllerOwner;
 
 #pragma mark - Object lifecycle
 
@@ -382,18 +484,36 @@ enum HeaderBehaviour {
     self.fullscreenController = dependencies.fullscreenController;
     _footerFullscreenProgress = 1.0;
 
+    // Initialize backing ivars for properties
+    _mainContentUIState = [[MainContentUIState alloc] init];
+    _logoAnimationControllerOwner = nil;
+    _lastContentOffset = CGPointZero;
+
     // When starting the browser with an open tab, it is necessary to reset the
-    // clipsToBounds property of the WKWebView so the page can bleed behind the
-    // toolbar.
+    // clipsToBounds property of the WKWebView's scroll view so the page can bleed
+    // behind the toolbar.
     if (self.currentWebState) {
-      self.currentWebState->GetWebViewProxy().scrollViewProxy.clipsToBounds =
-          NO;
+      UIView *webView = self.currentWebState->GetView();
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        [(WKWebView *)webView scrollView].clipsToBounds = NO;
+      }
     }
   }
   return self;
 }
 
 - (void)dealloc {
+  [self removeObserver:self forKeyPath:@"containerView.frame"];
+  if (self.currentWebState) {
+    UIView *webView = self.currentWebState->GetView();
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      [(WKWebView *)webView scrollView].delegate = nil;
+      [[(WKWebView *)webView scrollView] removeObserver:self forKeyPath:@"contentSize"];
+    }
+    if (webView) {
+      [webView removeObserver:self forKeyPath:@"frame"];
+    }
+  }
   DCHECK(_isShutdown) << "-shutdown must be called before dealloc.";
 }
 
@@ -474,11 +594,9 @@ enum HeaderBehaviour {
     [self updateToolbarState];
     self.fullscreenController->SetToolbarsSize(_toolbarsSize);
 
-    if (!IsRefactorToolbarsSize()) {
-      StartBroadcastingToolbarsSize(_toolbarsSize, broadcaster);
-    }
+    StartBroadcastingToolbarsSize(_toolbarsSize, broadcaster);
     _mainContentUIUpdater = [[MainContentUIStateUpdater alloc]
-        initWithState:[[MainContentUIState alloc] init]];
+        initWithState:_mainContentUIState];
     _webMainContentUIForwarder = [[WebScrollViewMainContentUIForwarder alloc]
         initWithUpdater:_mainContentUIUpdater
            webStateList:self.webStateList];
@@ -488,9 +606,7 @@ enum HeaderBehaviour {
         std::make_unique<FullscreenUIUpdater>(self.fullscreenController, self);
     [self updateForFullscreenProgress:self.fullscreenController->GetProgress()];
   } else {
-    if (!IsRefactorToolbarsSize()) {
-      StopBroadcastingToolbarsSize(broadcaster);
-    }
+    StopBroadcastingToolbarsSize(broadcaster);
     StopBroadcastingMainContentUI(broadcaster);
     _mainContentUIUpdater = nil;
     _toolbarsSize = nil;
@@ -556,7 +672,7 @@ enum HeaderBehaviour {
 }
 
 // Returns the safeAreaInsets of the root window for self.view. In some cases,
-// the self.view.safeAreaInsets are cleared when the view is unattached ( for
+// the self.view.safeAreaInsets are cleared when the view is unattached (for
 // example on the incognito BVC when the normal BVC is the one active or vice
 // versa). Attached or unattached, going to the window through the SceneState
 // for the self.browser solves both issues.
@@ -565,7 +681,7 @@ enum HeaderBehaviour {
     return UIEdgeInsetsZero;
   }
   UIEdgeInsets safeArea = self.safeAreaProvider.safeArea;
-
+  NSLog(@"rootSafeAreaInsets: %@", NSStringFromUIEdgeInsets(safeArea));
   return UIEdgeInsetsEqualToEdgeInsets(safeArea, UIEdgeInsetsZero)
              ? self.view.safeAreaInsets
              : safeArea;
@@ -591,18 +707,146 @@ enum HeaderBehaviour {
 }
 
 - (UIView*)viewForCurrentWebState {
-  return [self viewForWebState:self.currentWebState];
+  UIView *view = [self viewForWebState:self.currentWebState];
+  if (!view) {
+    NSLog(@"viewForCurrentWebState: No view available, creating fallback");
+    view = [[WKWebView alloc] initWithFrame:self.contentArea.bounds configuration:[self webViewConfiguration]];
+    view.backgroundColor = [UIColor lightGrayColor];
+  }
+  return view;
+}
+
+- (WKWebViewConfiguration *)webViewConfiguration {
+  WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+
+  // Inject CSS to ensure full viewport height and robust fixed element positioning
+  NSString *cssSource = @"html, body {"
+                       @"  height: 100vh !important;"
+                       @"  min-height: 100vh !important;"
+                       @"  margin: 0 !important;"
+                       @"  padding: 0 !important;"
+                       @"  overflow-x: hidden !important;"
+                       @"  width: 100% !important;"
+                       @"  -webkit-overflow-scrolling: touch !important;"
+                       @"  overscroll-behavior: none !important;"
+                       @"}"
+                       @"header, [role='banner'], [id*='header'], [class*='header'], nav, [role='navigation'], [id*='nav'], [class*='nav'], [style*='position: fixed; top'], [style*='position: sticky; top'], .fixed-top, .sticky-top {"
+                       @"  position: fixed !important;"
+                       @"  top: 0 !important;"
+                       @"  width: 100% !important;"
+                       @"  margin: 0 !important;"
+                       @"  padding: 0 !important;"
+                       @"  z-index: 10000 !important;"
+                       @"  transform: none !important;"
+                       @"  -webkit-transform: none !important;"
+                       @"  inset-block-start: 0 !important;"
+                       @"  will-change: position, top !important;"
+                       @"}"
+                       @"footer, [role='contentinfo'], [id*='footer'], [class*='footer'], [style*='position: fixed; bottom'], [style*='position: sticky; bottom'], .fixed-bottom, .sticky-bottom {"
+                       @"  position: fixed !important;"
+                       @"  bottom: 0 !important;"
+                       @"  width: 100% !important;"
+                       @"  margin: 0 !important;"
+                       @"  padding: 0 !important;"
+                       @"  z-index: 10000 !important;"
+                       @"  transform: none !important;"
+                       @"  -webkit-transform: none !important;"
+                       @"  inset-block-end: 0 !important;"
+                       @"  will-change: position, bottom !important;"
+                       @"}"
+                       @"@supports (padding: env(safe-area-inset-bottom)) {"
+                       @"  html, body, header, footer {"
+                       @"    padding-top: 0 !important;"
+                       @"    padding-bottom: 0 !important;"
+                       @"    margin-top: 0 !important;"
+                       @"    margin-bottom: 0 !important;"
+                       @"  }"
+                       @"}";
+  WKUserScript *cssScriptStart = [[WKUserScript alloc] initWithSource:[NSString stringWithFormat:@"var style = document.createElement('style'); style.innerHTML = '%@'; document.head.appendChild(style);", cssSource]
+                                                       injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                    forMainFrameOnly:YES];
+  WKUserScript *cssScriptEnd = [[WKUserScript alloc] initWithSource:[NSString stringWithFormat:@"var style = document.createElement('style'); style.innerHTML = '%@'; document.head.appendChild(style);", cssSource]
+                                                     injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                  forMainFrameOnly:YES];
+  [configuration.userContentController addUserScript:cssScriptStart];
+  [configuration.userContentController addUserScript:cssScriptEnd];
+
+  // Inject JavaScript to enforce fixed header positioning on touch events and continuously
+  NSString *scriptSource = @"(function() {"
+                          @"  function enforceFixedElements(isTouchEvent) {"
+                          @"    var vh = Math.max(window.innerHeight, document.documentElement.clientHeight);"
+                          @"    document.documentElement.style.height = vh + 'px';"
+                          @"    document.body.style.height = vh + 'px';"
+                          @"    var headers = document.querySelectorAll('header, [role=\"banner\"], [id*=\"header\"], [class*=\"header\"], nav, [role=\"navigation\"], [id*=\"nav\"], [class*=\"nav\"], [style*=\"position: fixed; top\"], [style*=\"position: sticky; top\"], .fixed-top, .sticky-top');"
+                          @"    headers.forEach(el => {"
+                          @"      var style = window.getComputedStyle(el);"
+                          @"      el.style.position = 'fixed';"
+                          @"      el.style.top = '0';"
+                          @"      el.style.width = '100%';"
+                          @"      el.style.zIndex = '10000';"
+                          @"      el.style.transform = 'none';"
+                          @"      el.style.webkitTransform = 'none';"
+                          @"      el.style.insetBlockStart = '0';"
+                          @"      el.style.left = '0';"
+                          @"      el.style.right = '0';"
+                          @"      console.log('Fixed header: ', el.tagName, el.id, el.className, 'top: ' + style.top, 'position: ' + style.position, 'offsetTop: ' + el.offsetTop, 'scrollY: ' + window.scrollY, 'time: ' + Date.now(), 'isTouchEvent: ' + isTouchEvent, 'computedStyle: ' + JSON.stringify({top: style.top, bottom: style.bottom, transform: style.transform, left: style.left, right: style.right}));"
+                          @"    });"
+                          @"    var footers = document.querySelectorAll('footer, [role=\"contentinfo\"], [id*=\"footer\"], [class*=\"footer\"], [style*=\"position: fixed; bottom\"], [style*=\"position: sticky; bottom\"], .fixed-bottom, .sticky-bottom');"
+                          @"    footers.forEach(el => {"
+                          @"      var style = window.getComputedStyle(el);"
+                          @"      el.style.position = 'fixed';"
+                          @"      el.style.bottom = '0';"
+                          @"      el.style.width = '100%';"
+                          @"      el.style.zIndex = '10000';"
+                          @"      el.style.transform = 'none';"
+                          @"      el.style.webkitTransform = 'none';"
+                          @"      el.style.insetBlockEnd = '0';"
+                          @"      el.style.left = '0';"
+                          @"      el.style.right = '0';"
+                          @"      console.log('Fixed footer: ', el.tagName, el.id, el.className, 'bottom: ' + style.bottom, 'position: ' + style.position, 'offsetTop: ' + el.offsetTop, 'scrollY: ' + window.scrollY, 'time: ' + Date.now(), 'isTouchEvent: ' + isTouchEvent, 'computedStyle: ' + JSON.stringify({top: style.top, bottom: style.bottom, transform: style.transform, left: style.left, right: style.right}));"
+                          @"    });"
+                          @"    if (window.scrollY < 0 || window.scrollY > (document.body.scrollHeight - vh)) {"
+                          @"      window.scrollTo(0, Math.min(Math.max(window.scrollY, 0), document.body.scrollHeight - vh));"
+                          @"      console.log('Corrected overscroll, scrollY: ' + window.scrollY, 'time: ' + Date.now());"
+                          @"    }"
+                          @"    console.log('Enforced fixed elements, viewport height: ' + vh, 'scrollY: ' + window.scrollY, 'clientHeight: ' + document.documentElement.clientHeight, 'time: ' + Date.now(), 'isTouchEvent: ' + isTouchEvent);"
+                          @"    if (!isTouchEvent) {"
+                          @"      requestAnimationFrame(function() { enforceFixedElements(false); });"
+                          @"    }"
+                          @"  }"
+                          @"  enforceFixedElements(false);"
+                          @"  window.addEventListener('touchstart', function(e) {"
+                          @"    console.log('Touchstart event, touches: ' + e.touches.length, 'scrollY: ' + window.scrollY, 'time: ' + Date.now());"
+                          @"    enforceFixedElements(true);"
+                          @"  });"
+                          @"  window.addEventListener('touchmove', function(e) {"
+                          @"    console.log('Touchmove event, touches: ' + e.touches.length, 'scrollY: ' + window.scrollY, 'time: ' + Date.now());"
+                          @"    enforceFixedElements(true);"
+                          @"  });"
+                          @"  window.addEventListener('resize', function() { enforceFixedElements(false); });"
+                          @"  window.addEventListener('load', function() { enforceFixedElements(false); });"
+                          @"  if (!document.querySelector('meta[name=viewport]')) {"
+                          @"    let meta = document.createElement('meta');"
+                          @"    meta.name = 'viewport';"
+                          @"    meta.content = 'width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';"
+                          @"    document.head.appendChild(meta);"
+                          @"    console.log('Added viewport meta tag');"
+                          @"  }"
+                          @"})();";
+  WKUserScript *stretchScript = [[WKUserScript alloc] initWithSource:scriptSource
+                                                      injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                   forMainFrameOnly:YES];
+  [configuration.userContentController addUserScript:stretchScript];
+  return configuration;
 }
 
 - (void)updateWebStateVisibility:(BOOL)isVisible {
-  if (isVisible) {
-    // TODO(crbug.com/40630853): The webState is not necessarily added to the
-    // view hierarchy, even though the bookkeeping says that the WebState is
-    // visible. Do not DCHECK([webState->GetView() window]) here since this is a
-    // known issue.
-    self.currentWebState->WasShown();
-  } else {
-    self.currentWebState->WasHidden();
+  if (self.currentWebState) {
+    if (isVisible) {
+      self.currentWebState->WasShown();
+    } else {
+      self.currentWebState->WasHidden();
+    }
   }
 }
 
@@ -613,6 +857,10 @@ enum HeaderBehaviour {
 - (WebStateList*)webStateList {
   WebStateList* webStateList = _webStateList.get();
   return webStateList ? webStateList : nullptr;
+}
+
+- (UIView*)containerView {
+  return _containerView;
 }
 
 #pragma mark - Public methods
@@ -645,7 +893,7 @@ enum HeaderBehaviour {
   // existing snapshot for the tab. This can happen when a new regular tab is
   // opened from an incognito tab. A different BVC is displayed, which may not
   // have enough time to finish appearing before a snapshot is requested.
-  if (self.currentWebState && [self appeared]) {
+  if (self.currentWebState && self.visibilityState == BrowserViewVisibilityState::kVisible) {
     SnapshotTabHelper::FromWebState(self.currentWebState)
         ->UpdateSnapshotWithCallback(nil);
   }
@@ -706,8 +954,11 @@ enum HeaderBehaviour {
     // Force loading the view in case it was not loaded yet.
     [self loadViewIfNeeded];
     _pagePlaceholderBrowserAgent->AddPagePlaceholder();
-    if (self.viewForCurrentWebState) {
+    // Only call displayTabView if there is a valid web state
+    if (self.currentWebState && self.viewForCurrentWebState) {
       [self displayTabView];
+    } else {
+      NSLog(@"setActive: Skipping displayTabView due to null currentWebState");
     }
   }
   [self setNeedsStatusBarAppearanceUpdate];
@@ -734,7 +985,7 @@ enum HeaderBehaviour {
     //
     // Note that currently, some controllers like the bookmark ones were already
     // dismissed (in this example in -dismissBookmarkModalControllerAnimated:),
-    // but are still reported as the presentedViewController.  Calling
+    // but are still reported as the presentedViewController. Calling
     // `dismissViewControllerAnimated:completion:` again would dismiss the BVC
     // itself, so instead check the value of `self.dismissingModal` and only
     // call dismiss if one of the above calls has not already triggered a
@@ -782,8 +1033,7 @@ enum HeaderBehaviour {
       completion();
     };
     [self.view addSubview:animatedView];
-    [animatedView animateFrom:originPoint
-        toTabGridButtonWithCompletion:completionBlock];
+    [animatedView animateFrom:originPoint toTabGridButtonWithCompletion:completionBlock];
   }
 }
 
@@ -792,8 +1042,8 @@ enum HeaderBehaviour {
   _isShutdown = YES;
 
   // Disconnect child coordinators.
-    [self.tabStripCoordinator stop];
-    self.tabStripCoordinator = nil;
+  [self.tabStripCoordinator stop];
+  self.tabStripCoordinator = nil;
   self.tabStripView = nil;
 
   [self.contentArea removeGestureRecognizer:self.contentAreaGestureRecognizer];
@@ -860,12 +1110,16 @@ enum HeaderBehaviour {
       UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
   self.contentArea.frame = initialViewsRect;
+  self.contentArea.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:self.contentArea.constraints];
 
   self.typingShield = [[UIButton alloc] initWithFrame:initialViewsRect];
   self.typingShield.hidden = YES;
   self.typingShield.autoresizingMask = initialViewAutoresizing;
   self.typingShield.accessibilityIdentifier = @"Typing Shield";
   self.typingShield.accessibilityLabel = l10n_util::GetNSString(IDS_CANCEL);
+  // Ensure typing shield doesn’t block touches when hidden
+  self.typingShield.userInteractionEnabled = NO;
   if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
     self.typingShield.backgroundColor =
         [UIColor colorNamed:kOmniboxPopoutOverlayColor];
@@ -888,13 +1142,6 @@ enum HeaderBehaviour {
   [self addConstraintsToToolbar];
 
   [_sideSwipeCoordinator addHorizontalGesturesToView:self.view];
-
-  if (self.hideToolbars) {
-    self.toolbarCoordinator.primaryToolbarViewController.view.hidden = YES;
-    self.toolbarCoordinator.secondaryToolbarViewController.view.hidden = YES;
-    self.primaryToolbarHeightConstraint.constant = 0;
-    self.secondaryToolbarHeightConstraint.constant = 0;
-  }
 
   // Add custom right-to-left swipe gesture recognizer
   UISwipeGestureRecognizer* swipeGesture = [[UISwipeGestureRecognizer alloc]
@@ -920,10 +1167,17 @@ enum HeaderBehaviour {
   self.contentPanGestureRecognizer.delegate = self;
   [self.contentArea addGestureRecognizer:self.contentPanGestureRecognizer];
 
-  self.view.backgroundColor = [UIColor colorNamed:kBackgroundColor];
+  self.view.backgroundColor = [UIColor blueColor];
+  self.contentArea.backgroundColor = [UIColor greenColor];
   if (_isOffTheRecord) {
     self.view.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
   }
+
+  // Set up KVO for container view frame
+  [self addObserver:self
+         forKeyPath:@"containerView.frame"
+            options:NSKeyValueObservingOptionNew
+            context:nil];
 
   if (@available(iOS 17, *)) {
     NSArray<UITrait>* traits = TraitCollectionSetForTraits(nil);
@@ -937,23 +1191,24 @@ enum HeaderBehaviour {
 }
 
 - (void)handleContentPanGesture:(UIPanGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateChanged) {
-        CGPoint translation = [gesture translationInView:self.contentArea];
-        NSString *swipeDirection = translation.y > 0 ? @"Down" : @"Up";
-        NSLog(@"Swipe detected: %@", swipeDirection);
-        NSLog(@"Translation: %@", NSStringFromCGPoint(translation));
+  if (gesture.state == UIGestureRecognizerStateChanged) {
+    CGPoint translation = [gesture translationInView:self.contentArea];
+    NSString *swipeDirection = translation.y > 0 ? @"Down" : @"Up";
+    NSLog(@"Swipe detected: %@", swipeDirection);
+    NSLog(@"Translation: %@", NSStringFromCGPoint(translation));
 
-        // Log scroll view state if a web view is present
-        if (self.currentWebState) {
-            id<CRWWebViewProxy> webViewProxy = self.currentWebState->GetWebViewProxy();
-            CRWWebViewScrollViewProxy *scrollViewProxy = webViewProxy.scrollViewProxy;
-            if (scrollViewProxy) {
-                NSLog(@"ScrollView contentOffset: %@", NSStringFromCGPoint(scrollViewProxy.contentOffset));
-                NSLog(@"ScrollView contentSize: %@", NSStringFromCGSize(scrollViewProxy.contentSize));
-                NSLog(@"ScrollView scrollEnabled: %d", scrollViewProxy.scrollEnabled);
-            }
-        }
+    // Log scroll view state if a web view is present
+    if (self.currentWebState) {
+      UIView *webView = self.currentWebState->GetView();
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        UIScrollView *scrollView = [(WKWebView *)webView scrollView];
+        NSLog(@"ScrollView contentOffset: %@", NSStringFromCGPoint(scrollView.contentOffset));
+        NSLog(@"ScrollView contentSize: %@", NSStringFromCGSize(scrollView.contentSize));
+        NSLog(@"ScrollView scrollEnabled: %d", scrollView.scrollEnabled);
+        _lastContentOffset = scrollView.contentOffset; // Update last known offset
+      }
     }
+  }
 }
 
 - (void)viewSafeAreaInsetsDidChange {
@@ -973,14 +1228,103 @@ enum HeaderBehaviour {
 
 - (void)viewDidLayoutSubviews {
   [super viewDidLayoutSubviews];
-  // Update the toolbar height to account for `topLayoutGuide` changes.
-  self.primaryToolbarHeightConstraint.constant =
-      [self primaryToolbarHeightWithInset];
+  self.primaryToolbarHeightConstraint.constant = [self primaryToolbarHeightWithInset];
 
-  if (self.ntpCoordinator.isNTPActiveForCurrentWebState &&
-      self.webUsageEnabled) {
-    self.ntpCoordinator.viewController.view.frame =
-        [self ntpFrameForCurrentWebState];
+  // Adjust web view for non-NTP pages, respecting toolbars
+  if (self.currentWebState && !self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+        // Start web view at top of content area to ensure clickability
+    CGFloat topInset = 0; // No offset to allow touches near Dynamic Island
+
+    // Calculate frame to span full content area height
+    CGRect viewFrame = self.contentArea.bounds;
+    viewFrame.origin.y = topInset;
+    viewFrame.size.height = self.contentArea.bounds.size.height;
+
+    UIView *webView = self.viewForCurrentWebState;
+
+    // Wrap the web view in a container to enforce size
+    if (!self.containerView || self.containerView != webView.superview) {
+      self.containerView = [[UIView alloc] initWithFrame:viewFrame];
+      self.containerView.clipsToBounds = NO; // Allow content to extend for scrolling
+      [webView removeFromSuperview];
+      [self.containerView addSubview:webView];
+      self.browserContainerViewController.contentView = self.containerView;
+      // Add KVO for web view frame
+      if (webView) {
+        [webView addObserver:self
+                  forKeyPath:@"frame"
+                     options:NSKeyValueObservingOptionNew
+                     context:nil];
+      }
+    }
+
+    // Only update frame if it has changed to avoid resetting scroll position
+    if (!CGRectEqualToRect(self.containerView.frame, viewFrame)) {
+      // Store current contentOffset if available
+      CGPoint currentOffset = _lastContentOffset;
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        currentOffset = [(WKWebView *)webView scrollView].contentOffset;
+      }
+
+      self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+      webView.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:webView.constraints];
+      [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+        subview.translatesAutoresizingMaskIntoConstraints = YES;
+        [NSLayoutConstraint deactivateConstraints:subview.constraints];
+      }];
+      self.containerView.frame = viewFrame;
+      self.containerView.bounds = viewFrame;
+      webView.frame = self.containerView.bounds;
+      webView.bounds = self.containerView.bounds;
+
+      // Restore contentOffset to prevent jump
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        [(WKWebView *)webView scrollView].contentOffset = currentOffset;
+      }
+
+      NSLog(@"viewDidLayoutSubviews: Set container view frame: %@", NSStringFromCGRect(viewFrame));
+      NSLog(@"viewDidLayoutSubviews: Web view frame: %@", NSStringFromCGRect(webView.frame));
+      NSLog(@"viewDidLayoutSubviews: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
+      NSLog(@"viewDidLayoutSubviews: Web view constraints: %@", webView.constraints);
+      NSLog(@"viewDidLayoutSubviews: Container view superview: %@", self.containerView.superview);
+      dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"viewDidLayoutSubviews: Container view frame after layout: %@", NSStringFromCGRect(self.containerView.frame));
+        NSLog(@"viewDidLayoutSubviews: Web view frame after layout: %@", NSStringFromCGRect(webView.frame));
+      });
+    }
+
+    // Adjust scroll view properties
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      UIScrollView *scrollView = [(WKWebView *)webView scrollView];
+      scrollView.contentInset = UIEdgeInsetsZero;
+      scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+      scrollView.clipsToBounds = NO;
+      scrollView.scrollEnabled = YES;
+      scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+      scrollView.delegate = self;
+      // Force contentSize to match frame height
+      if (scrollView.contentSize.height < viewFrame.size.height) {
+        scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
+        NSLog(@"viewDidLayoutSubviews: Forced contentSize height to %f", viewFrame.size.height);
+      }
+      // Add KVO for scroll view contentSize
+      [scrollView addObserver:self
+                   forKeyPath:@"contentSize"
+                      options:NSKeyValueObservingOptionNew
+                      context:nil];
+    }
+  }
+
+  if (self.ntpCoordinator.isNTPActiveForCurrentWebState && self.webUsageEnabled) {
+    UIViewController *ntpViewController = self.ntpCoordinator.viewController;
+    ntpViewController.view.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:ntpViewController.view.constraints];
+    ntpViewController.view.frame = [self ntpFrameForCurrentWebState];
+    ntpViewController.view.clipsToBounds = NO; // Prevent clipping for NTP
+    NSLog(@"viewDidLayoutSubviews: NTP view controller frame: %@", NSStringFromCGRect(ntpViewController.view.frame));
+    NSLog(@"viewDidLayoutSubviews: NTP view hierarchy: %@", ntpViewController.view.subviews);
   }
 }
 
@@ -988,11 +1332,16 @@ enum HeaderBehaviour {
   [super viewDidAppear:animated];
   self.visibilityState = BrowserViewVisibilityState::kVisible;
   [self updateBroadcastState];
-  [self updateToolbarState];
+  NSLog(@"viewDidAppear: Calling displayTabView");
+  if (!self.currentWebState) {
+    NSLog(@"viewDidAppear: No active web state, opening new tab");
+    [self openNewTabFromOriginPoint:CGPointZero focusOmnibox:NO inheritOpener:NO];
+  }
+  [self displayTabView];
 
   // If there is no first responder, try to make the webview the first
   // responder to have it answer keyboard commands (e.g. space bar to scroll
-  // and respond to gampad controllers). The WKContentView must be the first
+  // and respond to gamepad controllers). The WKContentView must be the first
   // responder before (or very shortly after) a load starts in order for
   // gamepads to work. (Ref: crbug.com/325307469)
   web::WebState* activeWebState = self.currentWebState;
@@ -1000,7 +1349,10 @@ enum HeaderBehaviour {
     NewTabPageTabHelper* NTPHelper =
         NewTabPageTabHelper::FromWebState(activeWebState);
     if (!NTPHelper || !NTPHelper->IsActive()) {
-      [activeWebState->GetWebViewProxy() becomeFirstResponder];
+      UIView *webView = activeWebState->GetView();
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        [webView becomeFirstResponder];
+      }
     }
   }
 }
@@ -1017,7 +1369,7 @@ enum HeaderBehaviour {
   }
   // Update the displayed view (if any; the switcher may not have created
   // one yet) in case it changed while showing the switcher.
-  if (self.viewForCurrentWebState) {
+  if (self.currentWebState && self.viewForCurrentWebState) {
     [self displayTabView];
   }
 }
@@ -1117,7 +1469,7 @@ enum HeaderBehaviour {
                            completion:(void (^)())completion {
   if (!self.presentedViewController) {
     // TODO(crbug.com/41364311): On iOS10, UIDocumentMenuViewController and
-    // WKFileUploadPanel somehow combine to call dismiss twice instead of once.
+    // WKFileUploadPanel somehow combine to call dismiss twice instead of one.
     // The second call would dismiss the BVC itself, so look for that case and
     // return early.
     //
@@ -1125,7 +1477,7 @@ enum HeaderBehaviour {
     // WKFileUploadPanel and UIDocumentPickerViewController.
     //
     // To make M65 as safe as possible, return early whenever this method is
-    // invoked but no VC appears to be presented.  These cases will always end
+    // invoked but no VC appears to be presented. These cases will always end
     // up dismissing the BVC itself, which would put the app into an
     // unresponsive state.
     return;
@@ -1134,7 +1486,7 @@ enum HeaderBehaviour {
   // Some calling code invokes `dismissViewControllerAnimated:completion:`
   // multiple times. Because the BVC is presented, subsequent calls end up
   // dismissing the BVC itself. This is never what should happen, so check for
-  // this case and return early.  It is not enough to check
+  // this case and return early. It is not enough to check
   // `self.dismissingModal` because some dismissals do not go through
   // -[BrowserViewController dismissViewControllerAnimated:completion:`.
   // TODO(crbug.com/40548564): Fix callers and remove this early return.
@@ -1231,9 +1583,9 @@ enum HeaderBehaviour {
   // or system has triggered another presentation.
   if ([self.nonModalPromoPresentationDelegate defaultNonModalPromoIsShowing]) {
     self.visibilityState = BrowserViewVisibilityState::kVisible;
-    [self.nonModalPromoPresentationDelegate
-        dismissDefaultNonModalPromoAnimated:NO
-                                 completion:superCall];
+    [self.presentedViewController
+        dismissViewControllerAnimated:NO
+                           completion:superCall];
 
   } else {
     superCall();
@@ -1258,14 +1610,216 @@ enum HeaderBehaviour {
                          : UIStatusBarStyleDefault;
 }
 
-#pragma mark - ** Private BVC Methods **
+#pragma mark - Missing Selector Implementations
 
-// Whether the browser view has appeared.
-- (BOOL)appeared {
-  return self.visibilityState !=
-             BrowserViewVisibilityState::kNotInViewHierarchy &&
-         self.visibilityState != BrowserViewVisibilityState::kAppearing;
+- (UIViewController *)viewControllerToPresent {
+  return self.presentedViewController ?: self;
 }
+
+#pragma mark - KVO Observation
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary *)change
+                       context:(void *)context {
+  if ([keyPath isEqualToString:@"containerView.frame"] && object == self.containerView) {
+    CGRect newFrame = [change[NSKeyValueChangeNewKey] CGRectValue];
+    NSLog(@"KVO: Container view frame changed to: %@", NSStringFromCGRect(newFrame));
+  } else if ([keyPath isEqualToString:@"contentSize"] && [object isKindOfClass:[UIScrollView class]]) {
+    CGSize newContentSize = [change[NSKeyValueChangeNewKey] CGSizeValue];
+    NSLog(@"KVO: Scroll view contentSize changed to: %@", NSStringFromCGSize(newContentSize));
+    // Enforce full contentSize for NTP only
+    if (self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+      CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+      if (!CGSizeEqualToSize(newContentSize, expectedContentSize)) {
+        NSLog(@"KVO: Correcting scroll view contentSize from %@ to %@", NSStringFromCGSize(newContentSize), NSStringFromCGSize(expectedContentSize));
+        UIScrollView *scrollView = (UIScrollView *)object;
+        scrollView.contentSize = expectedContentSize;
+      }
+    }
+  } else if ([keyPath isEqualToString:@"frame"] && [object isKindOfClass:[UIView class]]) {
+    CGRect newFrame = [change[NSKeyValueChangeNewKey] CGRectValue];
+    NSLog(@"KVO: Web view frame changed to: %@", NSStringFromCGRect(newFrame));
+  }
+}
+
+#pragma mark - UIScrollViewDelegate
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+  // Clamp contentOffset.y immediately to prevent overscroll affecting fixed elements
+  CGFloat maxOffsetY = MAX(0, scrollView.contentSize.height - scrollView.bounds.size.height);
+  CGFloat clampedOffsetY = MIN(MAX(scrollView.contentOffset.y, 0), maxOffsetY);
+  if (fabs(scrollView.contentOffset.y - clampedOffsetY) > 0.01) {
+    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, clampedOffsetY);
+    NSLog(@"scrollViewDidScroll: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
+  }
+
+  // Enforce full contentSize for non-NTP pages to ensure content reaches bottom
+  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    CGFloat expectedHeight = self.containerView.bounds.size.height;
+    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
+      NSLog(@"scrollViewDidScroll: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
+      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
+    }
+  } else {
+    // For NTP, enforce contentSize to match container bounds
+    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
+      NSLog(@"scrollViewDidScroll: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
+      scrollView.contentSize = expectedContentSize;
+    }
+  }
+
+  // Ensure consistent scroll view settings
+  scrollView.contentInset = UIEdgeInsetsZero;
+  scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+  scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  scrollView.bounces = NO;
+  scrollView.alwaysBounceVertical = NO;
+
+  _lastContentOffset = scrollView.contentOffset;
+  NSLog(@"scrollViewDidScroll: contentOffset: %@, contentSize: %@, bounds: %@, maxOffsetY: %f, scrollEnabled: %d, time: %ld", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds), maxOffsetY, scrollView.scrollEnabled, (long)NSDate.date.timeIntervalSince1970 * 1000);
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
+  // Clamp contentOffset.y immediately to prevent overscroll
+  CGFloat maxOffsetY = MAX(0, scrollView.contentSize.height - scrollView.bounds.size.height);
+  CGFloat clampedOffsetY = MIN(MAX(scrollView.contentOffset.y, 0), maxOffsetY);
+  if (fabs(scrollView.contentOffset.y - clampedOffsetY) > 0.01) {
+    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, clampedOffsetY);
+    NSLog(@"scrollViewWillBeginDragging: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
+  }
+
+  // Enforce contentSize and settings before scrolling starts
+  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    CGFloat expectedHeight = self.containerView.bounds.size.height;
+    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
+      NSLog(@"scrollViewWillBeginDragging: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
+      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
+    }
+  } else {
+    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
+      NSLog(@"scrollViewWillBeginDragging: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
+      scrollView.contentSize = expectedContentSize;
+    }
+  }
+
+  // Ensure consistent scroll view settings
+  scrollView.contentInset = UIEdgeInsetsZero;
+  scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+  scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  scrollView.bounces = NO;
+  scrollView.alwaysBounceVertical = NO;
+
+  _lastContentOffset = scrollView.contentOffset;
+  NSLog(@"scrollViewWillBeginDragging: contentOffset: %@, contentSize: %@, bounds: %@, maxOffsetY: %f", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds), maxOffsetY);
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
+  // Clamp contentOffset.y to ensure fixed elements stay in place
+  CGFloat maxOffsetY = MAX(0, scrollView.contentSize.height - scrollView.bounds.size.height);
+  CGFloat clampedOffsetY = MIN(MAX(scrollView.contentOffset.y, 0), maxOffsetY);
+  if (fabs(scrollView.contentOffset.y - clampedOffsetY) > 0.01) {
+    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, clampedOffsetY);
+    NSLog(@"scrollViewDidEndDragging: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
+  }
+
+  // Enforce contentSize to match container bounds
+  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    CGFloat expectedHeight = self.containerView.bounds.size.height;
+    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
+      NSLog(@"scrollViewDidEndDragging: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
+      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
+    }
+  } else {
+    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
+      NSLog(@"scrollViewDidEndDragging: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
+      scrollView.contentSize = expectedContentSize;
+    }
+  }
+
+  // Ensure consistent scroll view settings
+  scrollView.contentInset = UIEdgeInsetsZero;
+  scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+  scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  scrollView.bounces = NO;
+  scrollView.alwaysBounceVertical = NO;
+
+  _lastContentOffset = scrollView.contentOffset;
+  NSLog(@"scrollViewDidEndDragging: contentOffset: %@, contentSize: %@, bounds: %@, maxOffsetY: %f", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds), maxOffsetY);
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
+  // Clamp contentOffset.y to ensure fixed elements stay in place
+  CGFloat maxOffsetY = MAX(0, scrollView.contentSize.height - scrollView.bounds.size.height);
+  CGFloat clampedOffsetY = MIN(MAX(scrollView.contentOffset.y, 0), maxOffsetY);
+  if (fabs(scrollView.contentOffset.y - clampedOffsetY) > 0.01) {
+    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, clampedOffsetY);
+    NSLog(@"scrollViewDidEndDecelerating: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
+  }
+
+  // Enforce contentSize to match container bounds
+  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    CGFloat expectedHeight = self.containerView.bounds.size.height;
+    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
+      NSLog(@"scrollViewDidEndDecelerating: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
+      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
+    }
+  } else {
+    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
+      NSLog(@"scrollViewDidEndDecelerating: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
+      scrollView.contentSize = expectedContentSize;
+    }
+  }
+
+  // Ensure consistent scroll view settings
+  scrollView.contentInset = UIEdgeInsetsZero;
+  scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+  scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  scrollView.bounces = NO;
+  scrollView.alwaysBounceVertical = NO;
+
+  _lastContentOffset = scrollView.contentOffset;
+  NSLog(@"scrollViewDidEndDecelerating: contentOffset: %@, contentSize: %@, bounds: %@, maxOffsetY: %f", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds), maxOffsetY);
+}
+
+- (void)scrollViewDidScrollToTop:(UIScrollView *)scrollView {
+  // Ensure contentOffset.y is 0 and settings are consistent
+  if (fabs(scrollView.contentOffset.y) > 0.01) {
+    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, 0);
+    NSLog(@"scrollViewDidScrollToTop: Reset contentOffset.y to 0");
+  }
+
+  // Enforce contentSize to match container bounds
+  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    CGFloat expectedHeight = self.containerView.bounds.size.height;
+    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
+      NSLog(@"scrollViewDidScrollToTop: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
+      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
+    }
+  } else {
+    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
+      NSLog(@"scrollViewDidScrollToTop: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
+      scrollView.contentSize = expectedContentSize;
+    }
+  }
+
+  // Ensure consistent scroll view settings
+  scrollView.contentInset = UIEdgeInsetsZero;
+  scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+  scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  scrollView.bounces = NO;
+  scrollView.alwaysBounceVertical = NO;
+
+  _lastContentOffset = scrollView.contentOffset;
+  NSLog(@"scrollViewDidScrollToTop: contentOffset: %@, contentSize: %@, bounds: %@", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds));
+}
+
+#pragma mark - Private Methods: UI Configuration, update and Layout
 
 // Register notifications to NSNotification center.
 - (void)registerNotifications {
@@ -1280,7 +1834,7 @@ enum HeaderBehaviour {
                object:nil];
 }
 
-// On iOS7, iPad should match iOS6 status bar.  Install a simple black bar under
+// On iOS7, iPad should match iOS6 status bar. Install a simple black bar under
 // the status bar to mimic this layout.
 - (void)installFakeStatusBar {
   // This method is called when the view is loaded.
@@ -1292,6 +1846,8 @@ enum HeaderBehaviour {
   CGRect statusBarFrame = CGRectMake(0, 0, CGRectGetWidth(self.view.bounds), 0);
   _fakeStatusBarView = [[UIView alloc] initWithFrame:statusBarFrame];
   [_fakeStatusBarView setAutoresizingMask:UIViewAutoresizingFlexibleWidth];
+  // Prevent fake status bar from intercepting touches
+  _fakeStatusBarView.userInteractionEnabled = NO;
   if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
     _fakeStatusBarView.backgroundColor = TabStripHelper.backgroundColor;
     // Force the UserInterfaceStyle update in incognito.
@@ -1323,8 +1879,8 @@ enum HeaderBehaviour {
 
   if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
     const bool canShowTabStrip = IsRegularXRegularSizeClass(self);
-      [self.tabStripCoordinator start];
-      [self.tabStripCoordinator hideTabStrip:!canShowTabStrip];
+    [self.tabStripCoordinator start];
+    [self.tabStripCoordinator hideTabStrip:!canShowTabStrip];
   }
 }
 
@@ -1358,77 +1914,91 @@ enum HeaderBehaviour {
   if (!height) {
     return 0.0;
   }
-  // Add the safe area inset to the toolbar height.
-  CGFloat unsafeHeight = self.rootSafeAreaInsets.bottom;
-  return height + unsafeHeight;
+  // Do not add safe area inset to ensure toolbar sticks to bottom
+  return height;
 }
 
-// Sets up the constraints on the toolbar.
+// Sets up the constraints on the primary toolbar.
 - (void)addConstraintsToPrimaryToolbar {
-    // Skip adding constraints if toolbars are hidden
-    if (self.hideToolbars) {
-        return;
-    }
+  // Skip adding constraints if toolbars are hidden
+  if (self.hideToolbars) {
+    return;
+  }
 
-    NSLayoutYAxisAnchor* topAnchor;
-    // On iPhone, the toolbar is underneath the top of the screen.
-    // On iPad, it depends:
-    // - if the window is compact, it is like iPhone, underneath the top of the screen.
-    // - if the window is regular, it is underneath the tab strip.
-    if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_PHONE ||
-        !IsRegularXRegularSizeClass(self)) {
-        topAnchor = self.view.topAnchor;
-    } else {
-        topAnchor = self.tabStripView.bottomAnchor;
-    }
+  NSLayoutYAxisAnchor* topAnchor;
+  // On iPhone, the toolbar is underneath the top of the screen.
+  // On iPad, it depends:
+  // - if the window is compact, it is like iPhone, underneath the top of the screen.
+  // - if the window is regular, it is underneath the tab strip.
+  if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_PHONE ||
+      !IsRegularXRegularSizeClass(self)) {
+    topAnchor = self.view.topAnchor;
+  } else {
+    topAnchor = self.tabStripView.bottomAnchor;
+  }
 
-    // Only add leading and trailing constraints once as they are never updated.
-    // This uses the existence of `primaryToolbarOffsetConstraint` as a proxy for
-    // whether we've already added the leading and trailing constraints.
-    if (!self.primaryToolbarOffsetConstraint) {
-        [NSLayoutConstraint activateConstraints:@[
-            [self.toolbarCoordinator.primaryToolbarViewController.view.leadingAnchor
-                constraintEqualToAnchor:[self view].leadingAnchor],
-            [self.toolbarCoordinator.primaryToolbarViewController.view.trailingAnchor
-                constraintEqualToAnchor:[self view].trailingAnchor],
-        ]];
-    }
+  // Only add leading and trailing constraints once as they are never updated.
+  // This uses the existence of `primaryToolbarOffsetConstraint` as a proxy for
+  // whether we've already added the leading and trailing constraints.
+  if (!self.primaryToolbarOffsetConstraint) {
+    [NSLayoutConstraint activateConstraints:@[
+      [self.toolbarCoordinator.primaryToolbarViewController.view.leadingAnchor
+          constraintEqualToAnchor:[self view].leadingAnchor],
+      [self.toolbarCoordinator.primaryToolbarViewController.view.trailingAnchor
+          constraintEqualToAnchor:[self view].trailingAnchor],
+    ]];
+  }
 
-    // Offset and Height can be updated, so reset first.
-    self.primaryToolbarOffsetConstraint.active = NO;
-    self.primaryToolbarHeightConstraint.active = NO;
+  // Offset and Height can be updated, so reset first.
+  self.primaryToolbarOffsetConstraint.active = NO;
+  self.primaryToolbarHeightConstraint.active = NO;
 
-    // Create a constraint for the vertical positioning of the toolbar.
-    UIView* primaryView = self.toolbarCoordinator.primaryToolbarViewController.view;
-    self.primaryToolbarOffsetConstraint =
-        [primaryView.topAnchor constraintEqualToAnchor:topAnchor];
+  // Create a constraint for the vertical positioning of the toolbar.
+  UIView* primaryView = self.toolbarCoordinator.primaryToolbarViewController.view;
+  self.primaryToolbarOffsetConstraint =
+      [primaryView.topAnchor constraintEqualToAnchor:topAnchor];
 
-    // Create a constraint for the height of the toolbar to include the unsafe
-    // area height.
-    self.primaryToolbarHeightConstraint = [primaryView.heightAnchor
-        constraintEqualToConstant:[self primaryToolbarHeightWithInset]];
+  // Create a constraint for the height of the toolbar to include the unsafe
+  // area height.
+  self.primaryToolbarHeightConstraint = [primaryView.heightAnchor
+      constraintEqualToConstant:[self primaryToolbarHeightWithInset]];
 
-    self.primaryToolbarOffsetConstraint.active = YES;
-    self.primaryToolbarHeightConstraint.active = YES;
+  self.primaryToolbarOffsetConstraint.active = YES;
+  self.primaryToolbarHeightConstraint.active = YES;
+
+  // Ensure toolbar doesn't clip content, allowing overlap
+  primaryView.clipsToBounds = NO;
 }
 
 - (void)addConstraintsToSecondaryToolbar {
-    // Skip adding constraints if toolbars are hidden
-    if (self.hideToolbars) {
-        return;
-    }
+  // Skip adding constraints if toolbars are hidden
+  if (self.hideToolbars) {
+    return;
+  }
 
-    // Create a constraint for the height of the toolbar to include the unsafe
-    // area height.
-    UIView* toolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
-    self.secondaryToolbarHeightConstraint = [toolbarView.heightAnchor
-        constraintEqualToConstant:[self secondaryToolbarHeightWithInset]];
-    // The bottom toolbar can be constraint to the keyboard in some cases.
-    self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired - 1;
-    self.secondaryToolbarHeightConstraint.active = YES;
-    AddSameConstraintsToSides(
-        self.view, toolbarView,
-        LayoutSides::kBottom | LayoutSides::kLeading | LayoutSides::kTrailing);
+  // Ensure the secondary toolbar is pinned to the bottom with high priority
+  UIView* toolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
+  toolbarView.translatesAutoresizingMaskIntoConstraints = NO;
+
+  // Remove any existing constraints to avoid conflicts
+  [NSLayoutConstraint deactivateConstraints:toolbarView.constraints];
+
+  // Create a constraint for the height of the toolbar
+  self.secondaryToolbarHeightConstraint = [toolbarView.heightAnchor
+      constraintEqualToConstant:[self secondaryToolbarHeightWithInset]];
+  self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired; // Non-negotiable priority
+
+  // Pin to bottom, leading, and trailing edges of the view with zero constant
+  [NSLayoutConstraint activateConstraints:@[
+    [toolbarView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:0],
+    [toolbarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+    [toolbarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+    self.secondaryToolbarHeightConstraint
+  ]];
+
+  [toolbarView layoutIfNeeded];
+  toolbarView.clipsToBounds = NO; // Allow content to render behind toolbar
+  NSLog(@"addConstraintsToSecondaryToolbar: Secondary toolbar frame: %@", NSStringFromCGRect(toolbarView.frame));
 }
 
 // Adds constraints to the primary and secondary toolbars, anchoring them to the
@@ -1449,210 +2019,91 @@ enum HeaderBehaviour {
   _fakeStatusBarView.frame = fakeStatusBarFrame;
 }
 
-// Sets the correct frame and hierarchy for subviews and helper views.  Only
+// Sets up the frame and hierarchy for subviews and helper views. Only
 // insert views on `initialLayout`.
 - (void)setUpViewLayout:(BOOL)initialLayout {
-    DCHECK([self isViewLoaded]);
+  DCHECK([self isViewLoaded]);
 
-    [self setupStatusBarLayout];
+  [self setupStatusBarLayout];
 
-    if (initialLayout) {
-        // Add the tab strip on iPad if present, regardless of hideToolbars.
-        if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET && self.tabStripCoordinator) {
-            UIViewController* tabStripViewController = self.tabStripCoordinator.viewController;
-            [self addChildViewController:tabStripViewController];
-            self.tabStripView = tabStripViewController.view;
-            [self.view addSubview:self.tabStripView];
-            [tabStripViewController didMoveToParentViewController:self];
-            CGRect tabStripFrame = CGRectMake(0, self.headerOffset, self.view.bounds.size.width,
-                                              TabStripCollectionViewConstants.height);
-            self.tabStripView.frame = tabStripFrame;
-            self.tabStripView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
-                                                  UIViewAutoresizingFlexibleBottomMargin);
-        }
-
-        // Conditionally add toolbars only if hideToolbars is NO.
-        if (!self.hideToolbars) {
-            [self addChildViewController:self.toolbarCoordinator.primaryToolbarViewController];
-            UIView* primaryToolbarView = self.toolbarCoordinator.primaryToolbarViewController.view;
-            if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
-                [self.view insertSubview:primaryToolbarView aboveSubview:self.tabStripView];
-            } else {
-                [self.view addSubview:primaryToolbarView];
-            }
-            [self addChildViewController:self.toolbarCoordinator.secondaryToolbarViewController];
-            [self.view insertSubview:self.toolbarCoordinator.secondaryToolbarViewController.view
-                        aboveSubview:primaryToolbarView];
-        }
-
-        // Add guide kContentAreaGuide to the browser view.
-        [self.view addLayoutGuide:[[NamedGuide alloc] initWithName:kContentAreaGuide]];
-
-        // Configure the content area guide.
-        NamedGuide* contentAreaGuide = [NamedGuide guideWithName:kContentAreaGuide view:self.view];
-
-        // Define full-screen constraints (always defined).
-        self.contentAreaFullScreenConstraints = @[
-            [contentAreaGuide.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-            [contentAreaGuide.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-            [contentAreaGuide.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-            [contentAreaGuide.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
-        ];
-
-        // Define constraints with toolbars visible, only if toolbars are present.
-        if (!self.hideToolbars) {
-            UIView* primaryToolbarView = self.toolbarCoordinator.primaryToolbarViewController.view;
-            UIView* secondaryToolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
-            self.contentAreaWithToolbarsConstraints = @[
-                [contentAreaGuide.topAnchor constraintEqualToAnchor:primaryToolbarView.bottomAnchor],
-                [contentAreaGuide.bottomAnchor constraintEqualToAnchor:secondaryToolbarView.topAnchor],
-                [contentAreaGuide.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-                [contentAreaGuide.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
-            ];
-        }
-
-        // Activate the appropriate constraints based on hideToolbars.
-        [self updateContentAreaConstraints];
-
-        // Complete child UIViewController containment flow only for added views.
-        if (self.tabStripCoordinator) {
-            [self.tabStripCoordinator.viewController didMoveToParentViewController:self];
-        }
-        if (!self.hideToolbars) {
-            [self.toolbarCoordinator.primaryToolbarViewController didMoveToParentViewController:self];
-            [self.toolbarCoordinator.secondaryToolbarViewController didMoveToParentViewController:self];
-        }
+  if (initialLayout) {
+    // Add the tab strip on iPad if present, regardless of hideToolbars.
+    if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET && self.tabStripCoordinator) {
+      UIViewController* tabStripViewController = self.tabStripCoordinator.viewController;
+      [self addChildViewController:tabStripViewController];
+      self.tabStripView = tabStripViewController.view;
+      [self.view addSubview:self.tabStripView];
+      [tabStripViewController didMoveToParentViewController:self];
+      CGRect tabStripFrame = CGRectMake(0, self.headerOffset, self.view.bounds.size.width,
+                                        TabStripCollectionViewConstants.height);
+      self.tabStripView.frame = tabStripFrame;
+      self.tabStripView.autoresizingMask = (UIViewAutoresizingFlexibleWidth |
+                                            UIViewAutoresizingFlexibleBottomMargin);
     }
 
-    // Resize the typing shield to cover the entire browser view and bring it to
-    // the front.
-    self.typingShield.frame = self.contentArea.frame;
-    if (initialLayout) {
-        [self.view bringSubviewToFront:self.typingShield];
+    // Conditionally add toolbars only if hideToolbars is NO.
+    if (!self.hideToolbars) {
+      [self addChildViewController:self.toolbarCoordinator.primaryToolbarViewController];
+      UIView* primaryToolbarView = self.toolbarCoordinator.primaryToolbarViewController.view;
+      if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
+        [self.view insertSubview:primaryToolbarView aboveSubview:self.tabStripView];
+      } else {
+        [self.view addSubview:primaryToolbarView];
+      }
+      [self addChildViewController:self.toolbarCoordinator.secondaryToolbarViewController];
+      [self.view insertSubview:self.toolbarCoordinator.secondaryToolbarViewController.view
+                  aboveSubview:primaryToolbarView];
     }
 
-    // Move the overlay containers in front of the hierarchy.
-    [self updateOverlayContainerOrder];
+    // Complete child UIViewController containment flow only for added views.
+    if (self.tabStripCoordinator) {
+      [self.tabStripCoordinator.viewController didMoveToParentViewController:self];
+    }
+    if (!self.hideToolbars) {
+      [self.toolbarCoordinator.primaryToolbarViewController didMoveToParentViewController:self];
+      [self.toolbarCoordinator.secondaryToolbarViewController didMoveToParentViewController:self];
+    }
+  }
+
+  // Resize the typing shield to cover the entire browser view and bring it to the front.
+  self.typingShield.frame = self.contentArea.frame;
+  if (initialLayout) {
+    [self.view bringSubviewToFront:self.typingShield];
+  }
+
+  // Move the overlay containers in front of the hierarchy.
+  [self updateOverlayContainerOrder];
+
+  // Log content area frame and constraints
+  NSLog(@"setUpViewLayout: Content area frame: %@", NSStringFromCGRect(self.contentArea.frame));
+  NSLog(@"setUpViewLayout: Content area constraints: %@", self.contentArea.constraints);
 }
 
 - (void)updateContentAreaConstraints {
-    if (self.hideToolbars) {
-        [NSLayoutConstraint activateConstraints:self.contentAreaFullScreenConstraints];
-        if (self.contentAreaWithToolbarsConstraints) {
-            [NSLayoutConstraint deactivateConstraints:self.contentAreaWithToolbarsConstraints];
-        }
-    } else {
-        [NSLayoutConstraint activateConstraints:self.contentAreaWithToolbarsConstraints];
-        [NSLayoutConstraint deactivateConstraints:self.contentAreaFullScreenConstraints];
-    }
+  // Constraints are disabled as contentArea uses frame-based layout
+  [NSLayoutConstraint deactivateConstraints:self.contentArea.constraints];
+  self.contentArea.frame = self.view.bounds;
+  NSLog(@"updateContentAreaConstraints: Content area frame set to: %@", NSStringFromCGRect(self.contentArea.frame));
 }
 
-// Displays the current webState view.
-- (void)displayTabView {
-    UIView* view = self.viewForCurrentWebState;
-    DCHECK(view);
-    [self loadViewIfNeeded];
-
-    if (!self.inNewTabAnimation) {
-        [self.findInPageCommandsHandler hideFindUI];
-        [self.textZoomHandler hideTextZoomUI];
-
-        // Set the frame based on whether toolbars are hidden
-        CGRect viewFrame = self.hideToolbars ? self.view.bounds : self.contentArea.bounds;
-        if (!ios::provider::IsFullscreenSmoothScrollingSupported() && !self.hideToolbars) {
-            UIEdgeInsets viewportInsets = self.fullscreenController->GetCurrentViewportInsets();
-            viewFrame = UIEdgeInsetsInsetRect(viewFrame, viewportInsets);
-        }
-        view.frame = viewFrame;
-
-        // Log the initial frame of the view
-        NSLog(@"Initial view frame: %@", NSStringFromCGRect(view.frame));
-
-        if (!self.hideToolbars) {
-            [self updateToolbarState];
-        }
-
-        NewTabPageCoordinator* NTPCoordinator = self.ntpCoordinator;
-        if (NTPCoordinator.isNTPActiveForCurrentWebState) {
-            UIViewController* viewController = NTPCoordinator.viewController;
-            viewController.view.frame = [self ntpFrameForCurrentWebState];
-            [viewController.view layoutIfNeeded];
-            self.currentWebState->GetNavigationManager()->LoadIfNecessary();
-            self.browserContainerViewController.contentView = nil;
-            self.browserContainerViewController.contentViewController = viewController;
-            [NTPCoordinator constrainNamedGuideForFeedIPH];
-        } else {
-            self.browserContainerViewController.contentView = view;
-
-            // Adjust web view positioning when toolbars are hidden
-            if (self.currentWebState && self.hideToolbars) {
-                id<CRWWebViewProxy> webViewProxy = self.currentWebState->GetWebViewProxy();
-                CRWWebViewScrollViewProxy* scrollViewProxy = webViewProxy.scrollViewProxy;
-                if (scrollViewProxy) {
-                    // Set top inset for Dynamic Island
-                    CGFloat topInset = self.view.safeAreaInsets.top;
-                    scrollViewProxy.contentInset = UIEdgeInsetsMake(topInset, 0, 0, 0);
-                    scrollViewProxy.scrollIndicatorInsets = UIEdgeInsetsMake(topInset, 0, 0, 0);
-                    // Set initial content offset to respect the top inset
-                    scrollViewProxy.contentOffset = CGPointMake(0, -topInset);
-                    // Prevent bouncing to avoid revealing empty space
-                    scrollViewProxy.bounces = NO;
-                    // Disable scrolling to lock content in place
-                    scrollViewProxy.scrollEnabled = NO;
-                    // Ensure content size matches the view bounds to eliminate bottom space
-                    CGSize contentSize = scrollViewProxy.contentSize;
-                    CGFloat heightAdjustment = viewFrame.size.height - contentSize.height;
-                    if (heightAdjustment > 0) {
-                        scrollViewProxy.contentSize = CGSizeMake(contentSize.width, viewFrame.size.height);
-                    }
-
-                    // Log scroll view state after adjustments
-                    NSLog(@"Adjusted ScrollView contentOffset: %@", NSStringFromCGPoint(scrollViewProxy.contentOffset));
-                    NSLog(@"Adjusted ScrollView contentSize: %@", NSStringFromCGSize(scrollViewProxy.contentSize));
-                    NSLog(@"ScrollView scrollEnabled: %d", scrollViewProxy.scrollEnabled);
-
-                    // Force content size and offset to remain stable after a delay
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                        scrollViewProxy.contentSize = CGSizeMake(contentSize.width, viewFrame.size.height);
-                        scrollViewProxy.contentOffset = CGPointMake(0, -topInset);
-                        NSLog(@"Delayed ScrollView contentOffset: %@", NSStringFromCGPoint(scrollViewProxy.contentOffset));
-                        NSLog(@"Delayed ScrollView contentSize: %@", NSStringFromCGSize(scrollViewProxy.contentSize));
-                    });
-                }
-            }
-        }
-        if (ios::provider::IsFullscreenSmoothScrollingSupported()) {
-            self.fullscreenController->ResizeHorizontalViewport();
-        }
-    }
-
-    if (!self.hideToolbars) {
-        [self.toolbarCoordinator updateToolbar];
-    }
-
-    [self updateWebStateVisibility:YES];
-}
-
+// Updates the z-order of the banner and modal overlay containers.
 - (void)updateOverlayContainerOrder {
-  // Both infobar overlay container views should exist in front of the entire
-  // browser UI, and the banner container should appear behind the modal
-  // container.
-  [self bringOverlayContainerToFront:
-            self.infobarBannerOverlayContainerViewController];
-  [self bringOverlayContainerToFront:
-            self.infobarModalOverlayContainerViewController];
+  NSLog(@"updateOverlayContainerOrder: Banner=%@, Modal=%@",
+        self.infobarBannerOverlayContainerViewController,
+        self.infobarModalOverlayContainerViewController);
+  if (self.infobarBannerOverlayContainerViewController) {
+    [self bringOverlayContainerToFront:self.infobarBannerOverlayContainerViewController];
+  }
+  if (self.infobarModalOverlayContainerViewController) {
+    [self bringOverlayContainerToFront:self.infobarModalOverlayContainerViewController];
+  }
 }
 
-- (void)bringOverlayContainerToFront:
-    (UIViewController*)containerViewController {
+// Brings the given container view controller to the front of the view hierarchy.
+- (void)bringOverlayContainerToFront:(UIViewController*)containerViewController {
   [self.view bringSubviewToFront:containerViewController.view];
-  // If `containerViewController` is presenting a view over its current context,
-  // its presentation container view is added as a sibling to
-  // `containerViewController`'s view. This presented view should be brought in
-  // front of the container view.
   UIView* presentedContainerView =
-      containerViewController.presentedViewController.presentationController
-          .containerView;
+      containerViewController.presentedViewController.presentationController.containerView;
   if (presentedContainerView.superview == self.view) {
     [self.view bringSubviewToFront:presentedContainerView];
   }
@@ -1668,12 +2119,93 @@ enum HeaderBehaviour {
   self.visibilityState = BrowserViewVisibilityState::kVisible;
 }
 
-#pragma mark - Private Methods: UI Configuration, update and Layout
+// Displays the current webState view.
+- (void)displayTabView {
+  if (self.inNewTabAnimation) {
+    return;
+  }
+
+  if (!self.currentWebState) {
+    [self.ntpCoordinator start];
+    UIViewController* ntpController = self.ntpCoordinator.viewController;
+    if (ntpController.view.superview != self.containerView) {
+      [self addChildViewController:ntpController];
+      ntpController.view.frame = [self ntpFrameForCurrentWebState];
+      [self.containerView addSubview:ntpController.view];
+      [ntpController didMoveToParentViewController:self];
+      NSLog(@"displayTabView: NTP view controller frame: %@", NSStringFromCGRect(ntpController.view.frame));
+      NSLog(@"displayTabView: NTP view hierarchy: %@", ntpController.view.subviews);
+    }
+    return;
+  }
+
+  if (self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    [self.ntpCoordinator start];
+    UIViewController* ntpController = self.ntpCoordinator.viewController;
+    if (ntpController.view.superview != self.containerView) {
+      [self addChildViewController:ntpController];
+      ntpController.view.frame = [self ntpFrameForCurrentWebState];
+      [self.containerView addSubview:ntpController.view];
+      [ntpController didMoveToParentViewController:self];
+      NSLog(@"displayTabView: NTP view controller frame: %@", NSStringFromCGRect(ntpController.view.frame));
+      NSLog(@"displayTabView: NTP view hierarchy: %@", ntpController.view.subviews);
+    }
+    return;
+  }
+
+  // Non-NTP case
+  UIView* view = [self viewForWebState:self.currentWebState];
+  if (!view) {
+    return;
+  }
+
+  NSLog(@"displayTabView: Web view class: %@", NSStringFromClass([view class]));
+  UIScrollView* scrollView = nil;
+  if ([view isKindOfClass:[WKWebView class]]) {
+    scrollView = [(WKWebView*)view scrollView];
+  } else if ([view isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
+    // Access WKWebView from CRWWebControllerContainerView
+    for (UIView* subview in view.subviews) {
+      if ([subview isKindOfClass:[WKWebView class]]) {
+        scrollView = [(WKWebView*)subview scrollView];
+        NSLog(@"displayTabView: Found WKWebView in CRWWebControllerContainerView");
+        break;
+      }
+    }
+  }
+
+  if (scrollView) {
+    if (scrollView.contentSize.height < self.containerView.bounds.size.height) {
+      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, self.containerView.bounds.size.height);
+      scrollView.contentOffset = _lastContentOffset;
+    }
+    scrollView.scrollEnabled = YES;
+    scrollView.contentInset = UIEdgeInsetsZero;
+    scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+    scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    scrollView.bounces = NO;
+    scrollView.alwaysBounceVertical = NO;
+    // Log scroll view state after adjustments
+    NSLog(@"displayTabView: Adjusted ScrollView contentOffset: %@", NSStringFromCGPoint(scrollView.contentOffset));
+    NSLog(@"displayTabView: Adjusted ScrollView contentSize: %@", NSStringFromCGSize(scrollView.contentSize));
+    NSLog(@"displayTabView: ScrollView scrollEnabled: %d", scrollView.scrollEnabled);
+  } else {
+    NSLog(@"displayTabView: No scroll view found, skipping scroll configuration");
+  }
+
+  if (view.superview != self.containerView) {
+    [self.containerView addSubview:view];
+    view.frame = self.containerView.bounds;
+    view.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:view.constraints];
+    [self updateBrowserViewportForFullscreenProgress:self.footerFullscreenProgress];
+  }
+}
 
 // Starts or stops broadcasting the toolbar UI and main content UI depending on
 // whether the BVC is visible and active.
 - (void)updateBroadcastState {
-  self.broadcasting = self.active && [self appeared];
+  self.broadcasting = self.active && self.visibilityState == BrowserViewVisibilityState::kVisible;
 }
 
 // Dismisses popups and modal dialogs that are displayed above the BVC when the
@@ -1694,18 +2226,21 @@ enum HeaderBehaviour {
 - (CGRect)ntpFrameForCurrentWebState {
   DCHECK(self.ntpCoordinator.isNTPActiveForCurrentWebState);
   UIEdgeInsets viewportInsets = UIEdgeInsetsZero;
-
+  viewportInsets.top = self.rootSafeAreaInsets.top + kTopPadding;
   if (!self.hideToolbars) {
-    // Apply insets only when toolbars are visible
     if (!IsRegularXRegularSizeClass(self)) {
       viewportInsets.bottom = [self secondaryToolbarHeightWithInset];
     }
     if (!IsSplitToolbarMode(self) || _isOffTheRecord) {
-      viewportInsets.top = [self expandedTopToolbarHeight];
+      viewportInsets.top += [self expandedTopToolbarHeight];
     }
   }
-
-  return UIEdgeInsetsInsetRect(self.contentArea.bounds, viewportInsets);
+  CGRect frame = UIEdgeInsetsInsetRect(self.contentArea.bounds, viewportInsets);
+  NSLog(@"ntpFrameForCurrentWebState: NTP frame: %@", NSStringFromCGRect(frame));
+  NSLog(@"ntpFrameForCurrentWebState: Coordinator started: %d, View exists: %d",
+        self.ntpCoordinator.started,
+        self.ntpCoordinator.viewController.view != nil);
+  return frame;
 }
 
 // Sets the frame for the headers.
@@ -1717,9 +2252,9 @@ enum HeaderBehaviour {
     BOOL isPrimaryToolbar =
         header.view ==
         self.toolbarCoordinator.primaryToolbarViewController.view;
-    // Make sure the toolbarView's constraints are also updated.  Leaving the
+    // Make sure the toolbarView's constraints are also updated. Leaving the
     // -setFrame call to minimize changes in this CL -- otherwise the way
-    // toolbar_view manages it's alpha changes would also need to be updated.
+    // toolbar_view manages its alpha changes would also need to be updated.
     // TODO(crbug.com/40546808): This can be cleaned up when the new fullscreen
     // is enabled.
     if (isPrimaryToolbar && !IsRegularXRegularSizeClass(self)) {
@@ -1740,11 +2275,15 @@ enum HeaderBehaviour {
 
 - (UIView*)viewForWebState:(web::WebState*)webState {
   if (!webState) {
+    NSLog(@"viewForWebState: No web state provided, returning nil");
     return nil;
   }
   if (self.ntpCoordinator.isNTPActiveForCurrentWebState) {
-    return self.ntpCoordinator.started ? self.ntpCoordinator.viewController.view
-                                       : nil;
+    UIView *ntpView = self.ntpCoordinator.started ? self.ntpCoordinator.viewController.view : nil;
+    if (!ntpView) {
+      NSLog(@"viewForWebState: NTP coordinator not started or no view, returning nil");
+    }
+    return ntpView;
   }
   DCHECK(self.webStateList->GetIndexOfWebState(webState) !=
          WebStateList::kInvalidIndex);
@@ -1756,19 +2295,18 @@ enum HeaderBehaviour {
     // page was never loaded yet after launch.
     webState->GetNavigationManager()->LoadIfNecessary();
   }
-  return webState->GetView();
+  UIView *view = webState->GetView();
+  if (!view) {
+    NSLog(@"viewForWebState: No view available for web state, creating WKWebView");
+    view = [[WKWebView alloc] initWithFrame:self.contentArea.bounds configuration:[self webViewConfiguration]];
+  }
+  NSLog(@"viewForWebState: Returning view of class: %@", NSStringFromClass([view class]));
+  return view;
 }
 
 // Notifies or modifies BVC owned UI elements when a UITrait has been changed.
 - (void)updateUIOnTraitChange:(UITraitCollection*)previousTraitCollection {
-  if (@available(iOS 17.0, *)) {
-    if (base::FeatureList::IsEnabled(kEnableTraitCollectionWorkAround)) {
-      [self updateTraitsIfNeeded];
-    }
-  }
-
-  // After `-shutdown` is called, profile is invalid and will cause a
-  // crash.
+  // After `-shutdown` is called, profile is invalid and will cause a crash.
   if (_isShutdown) {
     return;
   }
@@ -1792,11 +2330,22 @@ enum HeaderBehaviour {
 #endif
 
   if (self.currentWebState) {
-    UIEdgeInsets contentPadding =
-        self.currentWebState->GetWebViewProxy().contentInset;
-    contentPadding.bottom = AlignValueToPixel(
-        self.footerFullscreenProgress * [self secondaryToolbarHeightWithInset]);
-    self.currentWebState->GetWebViewProxy().contentInset = contentPadding;
+    UIView *webView = self.currentWebState->GetView();
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      UIEdgeInsets contentPadding = [(WKWebView *)webView scrollView].contentInset;
+      contentPadding.bottom = 0; // No bottom inset to avoid gap
+      contentPadding.top = 0; // No top inset to allow content to stretch
+      [(WKWebView *)webView scrollView].contentInset = contentPadding;
+      [(WKWebView *)webView scrollView].scrollIndicatorInsets = contentPadding;
+      [(WKWebView *)webView scrollView].contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+      [(WKWebView *)webView scrollView].contentOffset = _lastContentOffset; // Restore offset
+      // Force contentSize to match frame height
+      CGFloat expectedHeight = self.containerView.bounds.size.height;
+      if ([(WKWebView *)webView scrollView].contentSize.height < expectedHeight) {
+        [(WKWebView *)webView scrollView].contentSize = CGSizeMake([(WKWebView *)webView scrollView].contentSize.width, expectedHeight);
+        NSLog(@"updateUIOnTraitChange: Forced contentSize height to %f", expectedHeight);
+      }
+    }
   }
 
   // Toolbars size must be updated before
@@ -1812,7 +2361,7 @@ enum HeaderBehaviour {
   // If the device's size class has changed from RegularXRegular to another and
   // vice-versa, the find bar should switch between regular mode and compact
   // mode accordingly. Hide the findbar here and it will be reshown in [self
-  // updateToobar];
+  // updateToolbar];
   if (ShouldShowCompactToolbar(previousTraitCollection) !=
       ShouldShowCompactToolbar(self)) {
     if (!IsNativeFindInPageAvailable()) {
@@ -1831,7 +2380,7 @@ enum HeaderBehaviour {
     [self showTabStripView:self.tabStripView];
     [self.tabStripView layoutSubviews];
     const bool canShowTabStrip = IsRegularXRegularSizeClass(self);
-      [self.tabStripCoordinator hideTabStrip:!canShowTabStrip];
+    [self.tabStripCoordinator hideTabStrip:!canShowTabStrip];
     _fakeStatusBarView.hidden = !canShowTabStrip;
     [self addConstraintsToPrimaryToolbar];
     // If tabstrip is leaving or coming back due to a window resize or screen
@@ -1907,13 +2456,14 @@ enum HeaderBehaviour {
       enterprise_idle::prefs::kLastActiveTimestamp, base::Time::Now());
 }
 
-#pragma mark - ** Protocol Implementations and Helpers **
+#pragma mark - Protocol Implementations and Helpers
 
 #pragma mark - Helpers
 
 - (UIEdgeInsets)snapshotEdgeInsetsForNTPHelper:(NewTabPageTabHelper*)NTPHelper {
   UIEdgeInsets maxViewportInsets =
       self.fullscreenController->GetMaxViewportInsets();
+  maxViewportInsets.top = self.rootSafeAreaInsets.top + kTopPadding;
 
   if (NTPHelper && NTPHelper->IsActive()) {
     // If the NTP is active, then it's used as the base view for snapshotting.
@@ -1924,17 +2474,17 @@ enum HeaderBehaviour {
     }
 
     // For the regular NTP without tab strip, it sits above the bottom toolbar
-    // but, since it is displayed as full-screen at the top, it requires maximum
-    // viewport insets.
+    // but starts below Dynamic Island + padding
     maxViewportInsets.bottom = 0;
     return maxViewportInsets;
   } else {
     // If the NTP is inactive, the WebState's view is used as the base view for
-    // snapshotting.  If fullscreen is implemented by resizing the scroll view,
-    // then the WebState view is already laid out within the visible viewport
-    // and doesn't need to be inset.  If fullscreen uses the content inset, then
+    // snapshotting. If fullscreen is implemented by resizing the scroll view,
+    // then the WebILAState view is already laid out within the visible viewport
+    // and doesn't need to be inset. If fullscreen uses the content inset, then
     // the WebState view is laid out fullscreen and should be inset by the
     // viewport insets.
+    maxViewportInsets.bottom = 0;
     return self.fullscreenController->ResizesScrollView() ? UIEdgeInsetsZero
                                                           : maxViewportInsets;
   }
@@ -1942,14 +2492,10 @@ enum HeaderBehaviour {
 
 #pragma mark - WebStateContainerViewProvider
 
-- (UIView*)containerView {
-  return self.contentArea;
-}
-
 - (CGPoint)dialogLocation {
   CGRect bounds = self.view.bounds;
   return CGPointMake(CGRectGetMidX(bounds),
-                     CGRectGetMinY(bounds) + self.headerHeight);
+                     CGRectGetMinY(bounds) + self.rootSafeAreaInsets.top + kTopPadding + self.headerHeight);
 }
 
 #pragma mark - OmniboxPopupPresenterDelegate methods.
@@ -1990,8 +2536,8 @@ enum HeaderBehaviour {
 
 - (void)updateForFullscreenProgress:(CGFloat)progress {
   if (!self.hideToolbars) {
-      [self updateHeadersForFullscreenProgress:progress];
-      [self updateFootersForFullscreenProgress:progress];
+    [self updateHeadersForFullscreenProgress:progress];
+    [self updateFootersForFullscreenProgress:progress];
   }
   if (!ios::provider::IsFullscreenSmoothScrollingSupported()) {
     [self updateBrowserViewportForFullscreenProgress:progress];
@@ -2005,43 +2551,52 @@ enum HeaderBehaviour {
 }
 
 - (void)animateFullscreenWithAnimator:(FullscreenAnimator*)animator {
-  // If the headers are being hidden, it's possible that this will reveal a
-  // portion of the webview beyond the top of the page's rendered content.  In
-  // order to prevent that, update the top padding and content before the
-  // animation begins.
-  CGFloat finalProgress = animator.finalProgress;
-  BOOL hidingHeaders = animator.finalProgress < animator.startProgress;
-  if (hidingHeaders) {
-    id<CRWWebViewProxy> webProxy = self.currentWebState->GetWebViewProxy();
-    CRWWebViewScrollViewProxy* scrollProxy = webProxy.scrollViewProxy;
-    CGPoint contentOffset = scrollProxy.contentOffset;
-    if (contentOffset.y - scrollProxy.contentInset.top <
-        webProxy.contentInset.top) {
-      [self updateBrowserViewportForFullscreenProgress:finalProgress];
-      contentOffset.y = -scrollProxy.contentInset.top;
-      scrollProxy.contentOffset = contentOffset;
+  // Store the current contentOffset to restore after animation
+  CGPoint originalContentOffset = _lastContentOffset;
+  if (self.currentWebState) {
+    UIView *webView = self.currentWebState->GetView();
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      originalContentOffset = [(WKWebView *)webView scrollView].contentOffset;
     }
   }
+
+  // Create a weak reference to animator to avoid retain cycles
+  __weak FullscreenAnimator* weakAnimator = animator;
 
   // Add animations to update the headers and footers.
   __weak BrowserViewController* weakSelf = self;
   [animator addAnimations:^{
-    [weakSelf updateHeadersForFullscreenProgress:finalProgress];
-    [weakSelf updateFootersForFullscreenProgress:finalProgress];
+    BrowserViewController* strongSelf = weakSelf;
+    FullscreenAnimator* strongAnimator = weakAnimator;
+    if (strongSelf && strongAnimator) {
+      [strongSelf updateHeadersForFullscreenProgress:strongAnimator.finalProgress];
+      [strongSelf updateFootersForFullscreenProgress:strongAnimator.finalProgress];
+    }
   }];
 
-  // Animating layout changes of the rendered content in the WKWebView is not
-  // supported, so update the content padding in the completion block of the
-  // animator to trigger a rerender in the page's new viewport.
-  __weak FullscreenAnimator* weakAnimator = animator;
+  // Restore contentOffset in the completion block to prevent jumps
   [animator addCompletion:^(UIViewAnimatingPosition finalPosition) {
-    [weakSelf updateBrowserViewportForFullscreenProgress:
-                  [weakAnimator progressForAnimatingPosition:finalPosition]];
+    BrowserViewController* strongSelf = weakSelf;
+    FullscreenAnimator* strongAnimator = weakAnimator;
+    if (!strongSelf || !strongSelf.currentWebState || !strongAnimator) {
+      return;
+    }
+    [strongSelf updateBrowserViewportForFullscreenProgress:
+                    [strongAnimator progressForAnimatingPosition:finalPosition]];
+    UIView *webView = strongSelf.currentWebState->GetView();
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      [(WKWebView *)webView scrollView].contentOffset = originalContentOffset;
+      NSLog(@"animateFullscreenWithAnimator: Restored contentOffset to: %@", NSStringFromCGPoint(originalContentOffset));
+    }
   }];
 }
 
 - (void)updateForFullscreenMinViewportInsets:(UIEdgeInsets)minViewportInsets
                            maxViewportInsets:(UIEdgeInsets)maxViewportInsets {
+  minViewportInsets.top = self.rootSafeAreaInsets.top + kTopPadding;
+  maxViewportInsets.top = self.rootSafeAreaInsets.top + kTopPadding;
+  minViewportInsets.bottom = 0; // No bottom inset
+  maxViewportInsets.bottom = 0; // No bottom inset
   [self updateForFullscreenProgress:self.fullscreenController->GetProgress()];
 }
 
@@ -2062,44 +2617,35 @@ enum HeaderBehaviour {
     return 0.0;
   }
   // Height is non-zero only when bottom omnibox is enabled.
-  return self.rootSafeAreaInsets.bottom + height;
+  return height;
 }
 
 // The maximum amount by which the top toolbar overlaps the browser content
 // area.
 - (CGFloat)expandedTopToolbarHeight {
   return [self primaryToolbarHeightWithInset] +
-         (IsRegularXRegularSizeClass(self) ? self.tabStripView.frame.size.height
-                                           : 0.0) +
-         self.headerOffset;
+         (IsRegularXRegularSizeClass(self) ? self.tabStripView.frame.size.height : 0.0) +
+         self.headerOffset + kTopPadding;
 }
 
 // Updates the ToolbarsSize, which broadcasts any changes to registered
 // listeners.
 - (void)updateToolbarState {
-  if (IsRefactorToolbarsSize()) {
-    [_toolbarsSize
-        setCollapsedTopToolbarHeight:[self collapsedTopToolbarHeight]
-            expandedTopToolbarHeight:[self expandedTopToolbarHeight]
-         expandedBottomToolbarHeight:[self secondaryToolbarHeightWithInset]
-        collapsedBottomToolbarHeight:[self collapsedBottomToolbarHeight]];
-  } else {
-    _toolbarsSize.collapsedTopToolbarHeight = [self collapsedTopToolbarHeight];
-    _toolbarsSize.expandedTopToolbarHeight = [self expandedTopToolbarHeight];
-    _toolbarsSize.collapsedBottomToolbarHeight =
-        [self collapsedBottomToolbarHeight];
-    _toolbarsSize.expandedBottomToolbarHeight =
-        [self secondaryToolbarHeightWithInset];
-  }
+  _toolbarsSize.collapsedTopToolbarHeight = [self collapsedTopToolbarHeight];
+  _toolbarsSize.expandedTopToolbarHeight = [self expandedTopToolbarHeight];
+  _toolbarsSize.collapsedBottomToolbarHeight =
+      [self collapsedBottomToolbarHeight];
+  _toolbarsSize.expandedBottomToolbarHeight =
+      [self secondaryToolbarHeightWithInset];
 }
 
 // Returns the height difference between the fully expanded and fully collapsed
 // primary toolbar.
 - (CGFloat)primaryToolbarHeightDelta {
   CGFloat fullyExpandedHeight =
-      self.fullscreenController->GetMaxViewportInsets().top;
+      self.fullscreenController->GetMaxViewportInsets().top + kTopPadding;
   CGFloat fullyCollapsedHeight =
-      self.fullscreenController->GetMinViewportInsets().top;
+      self.fullscreenController->GetMinViewportInsets().top + kTopPadding;
   return std::max(0.0, fullyExpandedHeight - fullyCollapsedHeight);
 }
 
@@ -2139,20 +2685,12 @@ enum HeaderBehaviour {
       self.fullscreenController->GetMaxViewportInsets().bottom;
   if (!expandedToolbarHeight) {
     // If `expandedToolbarHeight` is 0, secondary toolbar is hidden. In that
-    // case don't update it's height on fullscreen progress.
+    // case don't update its height on fullscreen progress.
     return;
   }
 
-  const CGFloat offset =
-      AlignValueToPixel((1.0 - progress) * [self secondaryToolbarHeightDelta]);
-  // Update the height constraint and force a layout on the container view
-  // so that the update is animatable.
-  const CGFloat height = expandedToolbarHeight - offset;
-  // Check that the computed height has a realistic value (crbug.com/1446068).
-  DUMP_WILL_BE_CHECK(height >= (0.0 - FLT_EPSILON) &&
-                     height <= (expandedToolbarHeight + FLT_EPSILON));
-
-  self.secondaryToolbarHeightConstraint.constant = height;
+  // Set the height to the expanded height to ensure it remains pinned to the bottom
+  self.secondaryToolbarHeightConstraint.constant = [self secondaryToolbarHeightWithInset];
 }
 
 // Updates the browser container view such that its viewport is the space
@@ -2162,46 +2700,156 @@ enum HeaderBehaviour {
     return;
   }
 
-  CGFloat top = 0.0;
-  CGFloat bottom = 0.0;
+  // Calculate top inset for Dynamic Island + padding only
+  CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
 
-  if (!self.hideToolbars) {
-    // Only calculate toolbar-based insets if toolbars are visible
-    top = AlignValueToPixel(
-        self.headerHeight + (progress - 1.0) * [self primaryToolbarHeightDelta]);
-    bottom = AlignValueToPixel([self secondaryToolbarHeightWithInset] +
-                               (progress - 1.0) * [self secondaryToolbarHeightDelta]);
+  // Calculate frame to start below Dynamic Island/status bar + padding
+  CGRect viewFrame = self.contentArea.bounds;
+  viewFrame.origin.y = topInset;
+  viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
+
+  // Update container view and web view for non-NTP pages
+  UIView *webView = self.viewForCurrentWebState;
+  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    // Store current contentOffset if available
+    CGPoint currentOffset = _lastContentOffset;
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      currentOffset = [(WKWebView *)webView scrollView].contentOffset;
+    }
+
+    if (!self.containerView || self.containerView != webView.superview) {
+      self.containerView = [[UIView alloc] initWithFrame:viewFrame];
+      self.containerView.clipsToBounds = NO; // Allow content to extend for scrolling
+      [webView removeFromSuperview];
+      [self.containerView addSubview:webView];
+      self.browserContainerViewController.contentView = self.containerView;
+      // Add KVO for web view frame
+      if (webView) {
+        [webView addObserver:self
+                  forKeyPath:@"frame"
+                     options:NSKeyValueObservingOptionNew
+                     context:nil];
+      }
+    }
+
+    // Only update frame if it has changed to avoid resetting scroll position
+    if (!CGRectEqualToRect(self.containerView.frame, viewFrame)) {
+      self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+      webView.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:webView.constraints];
+      [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+        subview.translatesAutoresizingMaskIntoConstraints = YES;
+        [NSLayoutConstraint deactivateConstraints:subview.constraints];
+      }];
+      self.containerView.frame = viewFrame;
+      self.containerView.bounds = viewFrame;
+      webView.frame = self.containerView.bounds;
+      webView.bounds = self.containerView.bounds;
+
+      // Restore contentOffset to prevent jump
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        [(WKWebView *)webView scrollView].contentOffset = currentOffset;
+      }
+
+      // Adjust scroll view settings without overriding content offset
+      if ([webView isKindOfClass:[WKWebView class]]) {
+        UIScrollView *scrollView = [(WKWebView *)webView scrollView];
+        scrollView.clipsToBounds = NO;
+        scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+        scrollView.contentInset = UIEdgeInsetsZero;
+        scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+        scrollView.delegate = self;
+        // Force contentSize to match frame height
+        if (scrollView.contentSize.height < viewFrame.size.height) {
+          scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
+          NSLog(@"updateBrowserViewport: Forced contentSize height to %f", viewFrame.size.height);
+        }
+      }
+
+      // Log frame to detect overrides
+      NSLog(@"updateBrowserViewport: Container view frame: %@", NSStringFromCGRect(self.containerView.frame));
+      NSLog(@"updateBrowserViewport: Web view frame: %@", NSStringFromCGRect(webView.frame));
+      NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
+      dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"updateBrowserViewport: Container view frame after update: %@", NSStringFromCGRect(self.containerView.frame));
+        NSLog(@"updateBrowserViewport: Web view frame after update: %@", NSStringFromCGRect(webView.frame));
+      });
+    }
   }
-
-  [self updateContentPaddingForTopToolbarHeight:top bottomToolbarHeight:bottom];
 }
 
 // Updates the padding of the web view proxy. This either resets the frame of
 // the WKWebView or the contentInsets of the WKWebView's UIScrollView, depending
-// on the the proxy's `shouldUseViewContentInset` property.
+// on the proxy's `shouldUseViewContentInset` property.
 - (void)updateContentPaddingForTopToolbarHeight:(CGFloat)topToolbarHeight
                             bottomToolbarHeight:(CGFloat)bottomToolbarHeight {
-  // Check if there’s a valid web state
   if (!self.currentWebState) {
     return;
   }
 
-  // Get the web view proxy to adjust its content insets
-  id<CRWWebViewProxy> webViewProxy = self.currentWebState->GetWebViewProxy();
-  UIEdgeInsets contentPadding = webViewProxy.contentInset;
+  UIView *webView = self.currentWebState->GetView();
+  if ([webView isKindOfClass:[WKWebView class]]) {
+    // Store current contentOffset
+    CGPoint currentOffset = [(WKWebView *)webView scrollView].contentOffset;
 
-  if (self.hideToolbars) {
-    // When toolbars are hidden, remove padding to fill the screen fully
-    contentPadding.top = 0;
-    contentPadding.bottom = 0;
-  } else {
-    // When toolbars are visible, set padding based on toolbar heights
-    contentPadding.top = topToolbarHeight;
-    contentPadding.bottom = bottomToolbarHeight;
+    // Set insets to zero to allow content to stretch to edges
+    UIEdgeInsets contentPadding = UIEdgeInsetsZero;
+    [(WKWebView *)webView scrollView].contentInset = contentPadding;
+    [(WKWebView *)webView scrollView].scrollIndicatorInsets = contentPadding;
+    [(WKWebView *)webView scrollView].contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+
+    // Restore contentOffset to prevent jump
+    [(WKWebView *)webView scrollView].contentOffset = currentOffset;
+
+    // Reapply toolbar-adjusted frame for non-NTP pages to prevent override
+    if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+      UIView *containerView = webView.superview;
+      if (!containerView || containerView == self.contentArea) {
+        containerView = [[UIView alloc] initWithFrame:self.contentArea.bounds];
+        containerView.clipsToBounds = NO; // Allow content to extend for scrolling
+        [webView removeFromSuperview];
+        [containerView addSubview:webView];
+        self.browserContainerViewController.contentView = containerView;
+        // Add KVO for web view frame
+        if (webView) {
+          [webView addObserver:self
+                    forKeyPath:@"frame"
+                       options:NSKeyValueObservingOptionNew
+                       context:nil];
+        }
+      }
+
+      // Calculate frame to start below Dynamic Island/status bar + padding
+      CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
+      CGRect viewFrame = self.contentArea.bounds;
+      viewFrame.origin.y = topInset;
+      viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
+
+      // Only update frame if it has changed
+      if (!CGRectEqualToRect(containerView.frame, viewFrame)) {
+        containerView.frame = viewFrame;
+        containerView.bounds = viewFrame;
+        webView.frame = containerView.bounds;
+        webView.bounds = containerView.bounds;
+
+        // Restore contentOffset again
+        [(WKWebView *)webView scrollView].contentOffset = currentOffset;
+
+        UIScrollView *scrollView = [(WKWebView *)webView scrollView];
+        scrollView.clipsToBounds = NO;
+        scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+        scrollView.contentInset = UIEdgeInsetsZero;
+        scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+        scrollView.delegate = self;
+        // Force contentSize to match frame height
+        if (scrollView.contentSize.height < viewFrame.size.height) {
+          scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
+          NSLog(@"updateContentPadding: Forced contentSize height to %f", viewFrame.size.height);
+        }
+      }
+    }
   }
-
-  // Apply the updated insets to the web view
-  webViewProxy.contentInset = contentPadding;
 }
 
 - (CGFloat)currentHeaderOffset {
@@ -2223,7 +2871,7 @@ enum HeaderBehaviour {
 #pragma mark - MainContentUI
 
 - (MainContentUIState*)mainContentUIState {
-  return _mainContentUIUpdater.state;
+  return _mainContentUIState;
 }
 
 #pragma mark - OmniboxFocusDelegate (Public)
@@ -2241,6 +2889,7 @@ enum HeaderBehaviour {
     [self.view insertSubview:self.typingShield aboveSubview:self.contentArea];
     [self.typingShield setAlpha:0.0];
     [self.typingShield setHidden:NO];
+    self.typingShield.userInteractionEnabled = YES; // Enable interaction only when visible
     [UIView animateWithDuration:0.3
                      animations:^{
                        [self.typingShield setAlpha:1.0];
@@ -2269,6 +2918,7 @@ enum HeaderBehaviour {
           return;
         }
         [self.typingShield setHidden:YES];
+        self.typingShield.userInteractionEnabled = NO; // Disable interaction when hidden
       }];
 
   ProceduralBlock completion = ^{
@@ -2283,10 +2933,10 @@ enum HeaderBehaviour {
 #pragma mark - BrowserCommands
 
 - (void)dismissSoftKeyboard {
-  DCHECK(self.visibilityState !=
-             BrowserViewVisibilityState::kNotInViewHierarchy ||
-         self.dismissingModal);
-  [self.viewForCurrentWebState endEditing:NO];
+  if (self.visibilityState != BrowserViewVisibilityState::kNotInViewHierarchy ||
+      self.dismissingModal) {
+    [self.viewForCurrentWebState endEditing:NO];
+  }
 }
 
 #pragma mark - TabConsumer (Public)
@@ -2307,13 +2957,20 @@ enum HeaderBehaviour {
     return;
   }
 
-  if (!self.viewForCurrentWebState) {
+  if (!self.currentWebState || !self.viewForCurrentWebState) {
+    NSLog(@"webStateSelected: No valid web state or view, skipping displayTabView");
     return;
   }
 
   [self displayTabView];
   if (!self.inNewTabAnimation) {
     _pagePlaceholderBrowserAgent->CancelPagePlaceholder();
+  }
+}
+
+- (void)displayTabViewIfActive {
+  if (self.active && self.currentWebState && self.viewForCurrentWebState) {
+    [self displayTabView];
   }
 }
 
@@ -2331,7 +2988,7 @@ enum HeaderBehaviour {
     }
     return;
   }
-  // Do nothing if browsing is currently suspended.  The BVC will set everything
+  // Do nothing if browsing is currently suspended. The BVC will set everything
   // up correctly when browsing resumes.
   if (self.visibilityState == BrowserViewVisibilityState::kNotInViewHierarchy ||
       !self.webUsageEnabled) {
@@ -2359,12 +3016,6 @@ enum HeaderBehaviour {
   self.inNewTabAnimation = NO;
 }
 
-- (void)displayTabViewIfActive {
-  if (self.active) {
-    [self displayTabView];
-  }
-}
-
 - (void)switchToTabAnimationPosition:(SwitchToTabAnimationPosition)position
                    snapshotTabHelper:(SnapshotTabHelper*)snapshotTabHelper
                   willAddPlaceholder:(BOOL)willAddPlaceholder
@@ -2380,7 +3031,7 @@ enum HeaderBehaviour {
 
   SwipeView* swipeView = [[SwipeView alloc]
       initWithFrame:self.contentArea.frame
-          topMargin:[self snapshotEdgeInsetsForNTPHelper:NTPHelper].top];
+          topMargin:self.rootSafeAreaInsets.top + kTopPadding];
 
   [swipeView setTopToolbarImage:topToolbarImage];
   [swipeView setBottomToolbarImage:bottomToolbarImage];
@@ -2444,7 +3095,13 @@ enum HeaderBehaviour {
   // Create the new page image, and load with the new tab snapshot except if
   // it is the NTP.
   UIView* newPage = [self viewForWebState:webState];
-  DCHECK(newPage);
+  if (!newPage) {
+    NSLog(@"animateNewTabForWebState: No valid view for web state, skipping animation");
+    if (completion) {
+      completion();
+    }
+    return;
+  }
   GURL tabURL = webState->GetVisibleURL();
   // Toolbar snapshot is only used for the UIRefresh animation.
   UIView* toolbarSnapshot;
@@ -2466,7 +3123,53 @@ enum HeaderBehaviour {
         self.webUsageEnabled) {
       newPage.frame = [self ntpFrameForCurrentWebState];
     } else {
-      newPage.frame = self.contentArea.bounds;
+            // Set frame to start at top of content area for clickability
+      CGFloat topInset = 0; // No offset to allow touches near Dynamic Island
+      CGRect viewFrame = self.contentArea.bounds;
+      viewFrame.origin.y = topInset;
+      viewFrame.size.height = self.contentArea.bounds.size.height;
+
+      // Store current contentOffset if available
+      CGPoint currentOffset = _lastContentOffset;
+      if ([newPage isKindOfClass:[WKWebView class]]) {
+        currentOffset = [(WKWebView *)newPage scrollView].contentOffset;
+      }
+      newPage.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:newPage.constraints];
+      [newPage.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+        subview.translatesAutoresizingMaskIntoConstraints = YES;
+        [NSLayoutConstraint deactivateConstraints:subview.constraints];
+      }];
+      // Wrap in a container view
+      UIView *containerView = [[UIView alloc] initWithFrame:viewFrame];
+      containerView.clipsToBounds = NO; // Allow content to extend for scrolling
+      [newPage removeFromSuperview];
+      [containerView addSubview:newPage];
+      newPage.frame = containerView.bounds;
+      newPage.bounds = containerView.bounds;
+      // Restore contentOffset
+      if ([newPage isKindOfClass:[WKWebView class]]) {
+        [(WKWebView *)newPage scrollView].contentOffset = currentOffset;
+        [(WKWebView *)newPage scrollView].contentInset = UIEdgeInsetsZero;
+        [(WKWebView *)newPage scrollView].scrollIndicatorInsets = UIEdgeInsetsZero;
+        [(WKWebView *)newPage scrollView].contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+        // Force contentSize to match frame height
+        UIScrollView *scrollView = [(WKWebView *)newPage scrollView];
+        if (scrollView.contentSize.height < viewFrame.size.height) {
+          scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
+          NSLog(@"animateNewTabForWebState: Forced contentSize height to %f", viewFrame.size.height);
+        }
+      }
+      newPage = containerView;
+      // Add KVO for web view frame
+      if (newPage.subviews.firstObject) {
+        [newPage.subviews.firstObject addObserver:self
+                                       forKeyPath:@"frame"
+                                          options:NSKeyValueObservingOptionNew
+                                          context:nil];
+      }
+      NSLog(@"animateNewTabForWebState: Set non-NTP container frame: %@", NSStringFromCGRect(newPage.frame));
+      NSLog(@"animateNewTabForWebState: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
     }
   }
   newPage.userInteractionEnabled = NO;
@@ -2484,8 +3187,67 @@ enum HeaderBehaviour {
       return;
     }
 
-    // Do not resize the same view.
-    if (webStateView != newPage) {
+    // Reapply toolbar-adjusted frame for non-NTP pages
+    if (!strongSelf.ntpCoordinator.isNTPActiveForCurrentWebState && webStateView) {
+      // Store current contentOffset if available
+      CGPoint currentOffset = strongSelf->_lastContentOffset;
+      if ([webStateView isKindOfClass:[WKWebView class]]) {
+        currentOffset = [(WKWebView *)webStateView scrollView].contentOffset;
+      }
+
+      CGFloat topInset = strongSelf.rootSafeAreaInsets.top + kTopPadding;
+      CGRect viewFrame = strongSelf.contentArea.bounds;
+      viewFrame.origin.y = topInset;
+      viewFrame.size.height = strongSelf.contentArea.bounds.size.height - topInset;
+
+      UIView *containerView = webStateView.superview;
+      if (!containerView || containerView == strongSelf.contentArea) {
+        containerView = [[UIView alloc] initWithFrame:viewFrame];
+        containerView.clipsToBounds = NO; // Allow content to extend for scrolling
+        [webStateView removeFromSuperview];
+        [containerView addSubview:webStateView];
+        strongSelf.browserContainerViewController.contentView = containerView;
+        // Add KVO for web view frame
+        if (webStateView) {
+          [webStateView addObserver:strongSelf
+                         forKeyPath:@"frame"
+                            options:NSKeyValueObservingOptionNew
+                            context:nil];
+        }
+      }
+      // Only update frame if it has changed
+      if (!CGRectEqualToRect(containerView.frame, viewFrame)) {
+        containerView.translatesAutoresizingMaskIntoConstraints = YES;
+        [NSLayoutConstraint deactivateConstraints:containerView.constraints];
+        webStateView.translatesAutoresizingMaskIntoConstraints = YES;
+        [NSLayoutConstraint deactivateConstraints:webStateView.constraints];
+        [webStateView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+          subview.translatesAutoresizingMaskIntoConstraints = YES;
+          [NSLayoutConstraint deactivateConstraints:subview.constraints];
+        }];
+        containerView.frame = viewFrame;
+        containerView.bounds = viewFrame;
+        webStateView.frame = containerView.bounds;
+        webStateView.bounds = containerView.bounds;
+
+        // Restore contentOffset
+        if ([webStateView isKindOfClass:[WKWebView class]]) {
+          [(WKWebView *)webStateView scrollView].contentOffset = currentOffset;
+          [(WKWebView *)webStateView scrollView].contentInset = UIEdgeInsetsZero;
+          [(WKWebView *)webStateView scrollView].scrollIndicatorInsets = UIEdgeInsetsZero;
+          [(WKWebView *)webStateView scrollView].contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+          // Force contentSize to match frame height
+          UIScrollView *scrollView = [(WKWebView *)webStateView scrollView];
+          if (scrollView.contentSize.height < viewFrame.size.height) {
+            scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
+            NSLog(@"animateNewTabForWebState: Forced contentSize height to %f in completion", viewFrame.size.height);
+          }
+        }
+
+        NSLog(@"animateNewTabForWebState: Reapplied non-NTP container frame: %@", NSStringFromCGRect(containerView.frame));
+        NSLog(@"animateNewTabForWebState: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
+      }
+    } else if (webStateView != newPage) {
       webStateView.frame = strongSelf.contentArea.bounds;
     }
 
@@ -2493,8 +3255,8 @@ enum HeaderBehaviour {
       // Prevent the completion block from being executed if a new animation has
       // started in between. `self.foregroundTabWasAddedCompletionBlock` isn't
       // called because it is overridden when a new animation is started.
-      // Calling it here would call the block from the lastest animation that
-      // haved started.
+      // Calling it here would call the block from the latest animation that
+      // have started.
       return;
     }
 
@@ -2520,6 +3282,7 @@ enum HeaderBehaviour {
 
   CGRect frame = [self.contentArea convertRect:self.view.bounds
                                       fromView:self.view];
+  frame.origin.y += self.rootSafeAreaInsets.top + kTopPadding;
   ForegroundTabAnimationView* animatedView =
       [[ForegroundTabAnimationView alloc] initWithFrame:frame];
   animatedView.contentView = newPage;
@@ -2641,29 +3404,31 @@ enum HeaderBehaviour {
 - (void)handleRightToLeftSwipe:(UISwipeGestureRecognizer*)gesture {
   if (gesture.state == UIGestureRecognizerStateEnded) {
     NSLog(@"Right-to-left swipe detected");
-    URLInputViewController* swipeMenuVC = [[URLInputViewController alloc] init];
-    swipeMenuVC.toolbarCoordinator = self.toolbarCoordinator;
-    swipeMenuVC.delegate = self;
-    [self presentViewController:swipeMenuVC animated:YES completion:^{
-      NSLog(@"URLInputViewController presented");
+
+    // Present URLInputViewController with slide animation
+    URLInputViewController* menuVC = [[URLInputViewController alloc] init];
+    menuVC.toolbarCoordinator = self.toolbarCoordinator; // Pass toolbar coordinator
+    menuVC.delegate = self; // Set delegate to handle URL submission
+    menuVC.modalPresentationStyle = UIModalPresentationCustom;
+    // Use URLInputTransitioningDelegate to manage the slide transition
+    URLInputTransitioningDelegate* transitioningDelegate = [[URLInputTransitioningDelegate alloc] init];
+    menuVC.transitioningDelegate = transitioningDelegate;
+    [self presentViewController:menuVC animated:YES completion:^{
+      NSLog(@"URLInputViewController presented with frame: %@", NSStringFromCGRect(menuVC.view.frame));
+      NSLog(@"URLInputViewController view hierarchy: %@", menuVC.view.subviews);
     }];
   }
 }
 
-#pragma mark - URLInputViewControllerDelegate
-
-- (void)urlInputViewController:(UIViewController*)controller
-                    didEnterURL:(NSURL*)url {
-  // Load the URL in the current web view
-  web::NavigationManager::WebLoadParams params(
-      GURL(base::SysNSStringToUTF8(url.absoluteString)));
-  params.transition_type = ui::PAGE_TRANSITION_TYPED;
-  web::WebState* activeWebState = self.webStateList->GetActiveWebState();
-  if (activeWebState) {
-    activeWebState->GetNavigationManager()->LoadURLWithParams(params);
-    NSLog(@"Navigating to URL: %@, web state active: %d", url.absoluteString, activeWebState != nullptr);
+// URLInputViewControllerDelegate method to handle URL submission
+- (void)urlInputViewController:(URLInputViewController*)controller didEnterURL:(NSURL*)url {
+  if (self.currentWebState && url) {
+    web::NavigationManager::WebLoadParams params(net::GURLWithNSURL(url));
+    params.transition_type = ui::PAGE_TRANSITION_TYPED;
+    self.currentWebState->GetNavigationManager()->LoadURLWithParams(params);
+    NSLog(@"Loading URL from swipe menu: %@", url);
   } else {
-    NSLog(@"Error: No active web state for navigation to URL: %@", url.absoluteString);
+    NSLog(@"Failed to load URL: No web state or invalid URL");
   }
 }
 
@@ -2671,16 +3436,16 @@ enum HeaderBehaviour {
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
     shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
-    // Allow the pan gesture recognizer to work with other gestures
-    if (gestureRecognizer == self.contentPanGestureRecognizer) {
-        return YES;
-    }
-    // Existing logic for swipe gestures
-    if ([gestureRecognizer isKindOfClass:[UISwipeGestureRecognizer class]] &&
-        [(UISwipeGestureRecognizer *)gestureRecognizer direction] == UISwipeGestureRecognizerDirectionLeft) {
-        return NO; // Custom swipe takes precedence
-    }
+  // Allow the pan gesture recognizer to work with other gestures
+  if (gestureRecognizer == self.contentPanGestureRecognizer) {
     return YES;
+  }
+  // Existing logic for swipe gestures
+  if ([gestureRecognizer isKindOfClass:[UISwipeGestureRecognizer class]] &&
+      [(UISwipeGestureRecognizer *)gestureRecognizer direction] == UISwipeGestureRecognizerDirectionLeft) {
+    return NO; // Custom swipe takes precedence
+  }
+  return YES;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer*)gesture {
@@ -2707,8 +3472,6 @@ enum HeaderBehaviour {
   [_sideSwipeCoordinator setSwipeInProgress:NO];
 }
 
-// TODO(crbug.com/40842427): Factor this delegate into a mediator or other
-// helper
 #pragma mark - SideSwipeUIControllerDelegate
 
 - (UIView*)sideSwipeFullscreenView {
@@ -2723,7 +3486,6 @@ enum HeaderBehaviour {
   [self displayTabView];
 }
 
-// TODO(crbug.com/40842427): Federate side swipe logic.
 - (BOOL)preventSideSwipe {
   if ([self.popupMenuCoordinator isShowingPopupMenu]) {
     return YES;
@@ -2761,12 +3523,12 @@ enum HeaderBehaviour {
 
 - (CGFloat)headerHeightForSideSwipe {
   // If the toolbar is hidden, only inset the side swipe navigation view by
-  // `safeAreaInsets.top`.  Otherwise insetting by `self.headerHeight` would
-  // show a grey strip where the toolbar would normally be.
+  // `safeAreaInsets.top` + padding. Otherwise insetting by `self.headerHeight`
+  // would show a grey strip where the toolbar would normally be.
   if (self.toolbarCoordinator.primaryToolbarViewController.view.hidden) {
-    return self.rootSafeAreaInsets.top;
+    return self.rootSafeAreaInsets.top + kTopPadding;
   }
-  return self.headerHeight;
+  return self.headerHeight + kTopPadding;
 }
 
 - (BOOL)canBeginToolbarSwipe {
@@ -2785,8 +3547,9 @@ enum HeaderBehaviour {
     return;
   }
 
-  // Toolbars size must be updated before `updateForFullscreenProgress` as
-  // the later uses the insets from fullscreen model.
+  // Toolbars size must be updated before
+  // `updateFootersForFullscreenProgress` as the later uses the insets from
+  // fullscreen model.
   [self updateToolbarState];
 
   self.primaryToolbarHeightConstraint.constant =
@@ -2797,21 +3560,31 @@ enum HeaderBehaviour {
 }
 
 - (void)secondaryToolbarMovedAboveKeyboard {
-  // Lower the height constraint priority, allowing UIKeyboardLayoutGuide to
-  // move the toolbar above the keyboard.
+  // Lower the height constraint priority temporarily to allow UIKeyboardLayoutGuide
+  // to move the toolbar above the keyboard.
   self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityDefaultHigh;
+  // Re-apply bottom constraint to ensure it stays at the bottom when keyboard is dismissed
+  UIView* toolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
+  [NSLayoutConstraint deactivateConstraints:@[toolbarView.constraints.lastObject]];
+  [NSLayoutConstraint activateConstraints:@[
+    [toolbarView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+  ]];
 }
 
 - (void)secondaryToolbarRemovedFromKeyboard {
-  // Return to required priority, otherwise UIKeyboardLayoutGuide would set the
-  // toolbar minimum height to the bottom safe area.
-  self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired - 1;
+  // Restore required priority and re-apply bottom constraint
+  self.secondaryToolbarHeightConstraint.priority = UILayoutPriorityRequired;
+  UIView* toolbarView = self.toolbarCoordinator.secondaryToolbarViewController.view;
+  [NSLayoutConstraint deactivateConstraints:@[toolbarView.constraints.lastObject]];
+  [NSLayoutConstraint activateConstraints:@[
+    [toolbarView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+  ]];
 }
 
 #pragma mark - LogoAnimationControllerOwnerOwner (Public)
 
 - (id<LogoAnimationControllerOwner>)logoAnimationControllerOwner {
-  return nil;
+  return _logoAnimationControllerOwner;
 }
 
 #pragma mark - FindBarPresentationDelegate
@@ -2851,7 +3624,8 @@ enum HeaderBehaviour {
   contextualSheet.translatesAutoresizingMaskIntoConstraints = NO;
   [NSLayoutConstraint activateConstraints:@[
     [contextualSheet.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-    [contextualSheet.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+    [contextualSheet.topAnchor constraintEqualToAnchor:self.view.topAnchor
+                                             constant:self.rootSafeAreaInsets.top + kTopPadding],
     [contextualSheet.widthAnchor constraintEqualToAnchor:self.view.widthAnchor multiplier:0.9],
     [contextualSheet.heightAnchor constraintEqualToAnchor:self.view.heightAnchor multiplier:0.5]
   ]];
@@ -2861,10 +3635,11 @@ enum HeaderBehaviour {
 
 - (CGRect)webContentAreaForLensCoordinator:(LensCoordinator*)lensCoordinator {
   DCHECK(lensCoordinator);
-  // Return the bounds of the content area as the web content area
-  return self.contentArea.bounds;
+  // Return the bounds of the content area adjusted for Dynamic Island/status bar
+  CGRect frame = self.contentArea.bounds;
+  frame.origin.y = self.rootSafeAreaInsets.top + kTopPadding;
+  frame.size.height -= frame.origin.y;
+  return frame;
 }
-
-// [Rest of the methods remain unchanged]
 
 @end
