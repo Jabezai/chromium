@@ -726,40 +726,47 @@ enum HeaderBehaviour {
                        @"  margin: 0 !important;"
                        @"  padding: 0 !important;"
                        @"  overflow-x: hidden !important;"
+                       @"  overflow-y: auto !important;"
                        @"  width: 100% !important;"
                        @"  -webkit-overflow-scrolling: touch !important;"
                        @"  overscroll-behavior: none !important;"
+                       @"  box-sizing: border-box !important;"
                        @"}"
-                       @"header, [role='banner'], [id*='header'], [class*='header'], nav, [role='navigation'], [id*='nav'], [class*='nav'], [style*='position: fixed; top'], [style*='position: sticky; top'], .fixed-top, .sticky-top {"
+                       @"header, [role='banner'], [id*='header' i], [class*='header' i], nav, [role='navigation'], [id*='nav' i], [class*='nav' i], [style*='position: fixed; top' i], [style*='position: sticky; top' i], .fixed-top, .sticky-top {"
                        @"  position: fixed !important;"
                        @"  top: 0 !important;"
                        @"  width: 100% !important;"
+                       @"  max-width: 100% !important;"
                        @"  margin: 0 !important;"
                        @"  padding: 0 !important;"
                        @"  z-index: 10000 !important;"
                        @"  transform: none !important;"
                        @"  -webkit-transform: none !important;"
                        @"  inset-block-start: 0 !important;"
-                       @"  will-change: position, top !important;"
+                       @"  left: 0 !important;"
+                       @"  right: 0 !important;"
+                       @"  box-sizing: border-box !important;"
                        @"}"
-                       @"footer, [role='contentinfo'], [id*='footer'], [class*='footer'], [style*='position: fixed; bottom'], [style*='position: sticky; bottom'], .fixed-bottom, .sticky-bottom {"
+                       @"footer, [role='contentinfo'], [id*='footer' i], [class*='footer' i], [style*='position: fixed; bottom' i], [style*='position: sticky; bottom' i], .fixed-bottom, .sticky-bottom {"
                        @"  position: fixed !important;"
                        @"  bottom: 0 !important;"
                        @"  width: 100% !important;"
+                       @"  max-width: 100% !important;"
                        @"  margin: 0 !important;"
                        @"  padding: 0 !important;"
                        @"  z-index: 10000 !important;"
                        @"  transform: none !important;"
                        @"  -webkit-transform: none !important;"
                        @"  inset-block-end: 0 !important;"
-                       @"  will-change: position, bottom !important;"
+                       @"  left: 0 !important;"
+                       @"  right: 0 !important;"
+                       @"  box-sizing: border-box !important;"
                        @"}"
                        @"@supports (padding: env(safe-area-inset-bottom)) {"
                        @"  html, body, header, footer {"
-                       @"    padding-top: 0 !important;"
-                       @"    padding-bottom: 0 !important;"
-                       @"    margin-top: 0 !important;"
-                       @"    margin-bottom: 0 !important;"
+                       @"    padding-top: env(safe-area-inset-top) !important;"
+                       @"    padding-bottom: env(safe-area-inset-bottom) !important;"
+                       @"    margin: 0 !important;"
                        @"  }"
                        @"}";
   WKUserScript *cssScriptStart = [[WKUserScript alloc] initWithSource:[NSString stringWithFormat:@"var style = document.createElement('style'); style.innerHTML = '%@'; document.head.appendChild(style);", cssSource]
@@ -771,38 +778,48 @@ enum HeaderBehaviour {
   [configuration.userContentController addUserScript:cssScriptStart];
   [configuration.userContentController addUserScript:cssScriptEnd];
 
-  // Inject JavaScript to enforce fixed header positioning on touch events and continuously
+  // Inject JavaScript to enforce fixed header/footer positioning and monitor DOM changes
   NSString *scriptSource = @"(function() {"
                           @"  function enforceFixedElements(isTouchEvent) {"
                           @"    var vh = Math.max(window.innerHeight, document.documentElement.clientHeight);"
                           @"    document.documentElement.style.height = vh + 'px';"
                           @"    document.body.style.height = vh + 'px';"
-                          @"    var headers = document.querySelectorAll('header, [role=\"banner\"], [id*=\"header\"], [class*=\"header\"], nav, [role=\"navigation\"], [id*=\"nav\"], [class*=\"nav\"], [style*=\"position: fixed; top\"], [style*=\"position: sticky; top\"], .fixed-top, .sticky-top');"
+                          @"    document.documentElement.style.overflowY = 'auto';"
+                          @"    document.body.style.overflowY = 'auto';"
+                          @"    var headers = document.querySelectorAll('header, [role=\"banner\"], [id*=\"header\" i], [class*=\"header\" i], nav, [role=\"navigation\"], [id*=\"nav\" i], [class*=\"nav\" i], [style*=\"position: fixed; top\" i], [style*=\"position: sticky; top\" i], .fixed-top, .sticky-top');"
                           @"    headers.forEach(el => {"
                           @"      var style = window.getComputedStyle(el);"
                           @"      el.style.position = 'fixed';"
                           @"      el.style.top = '0';"
                           @"      el.style.width = '100%';"
+                          @"      el.style.maxWidth = '100%';"
                           @"      el.style.zIndex = '10000';"
                           @"      el.style.transform = 'none';"
                           @"      el.style.webkitTransform = 'none';"
                           @"      el.style.insetBlockStart = '0';"
                           @"      el.style.left = '0';"
                           @"      el.style.right = '0';"
+                          @"      el.style.margin = '0';"
+                          @"      el.style.padding = '0';"
+                          @"      el.style.boxSizing = 'border-box';"
                           @"      console.log('Fixed header: ', el.tagName, el.id, el.className, 'top: ' + style.top, 'position: ' + style.position, 'offsetTop: ' + el.offsetTop, 'scrollY: ' + window.scrollY, 'time: ' + Date.now(), 'isTouchEvent: ' + isTouchEvent, 'computedStyle: ' + JSON.stringify({top: style.top, bottom: style.bottom, transform: style.transform, left: style.left, right: style.right}));"
                           @"    });"
-                          @"    var footers = document.querySelectorAll('footer, [role=\"contentinfo\"], [id*=\"footer\"], [class*=\"footer\"], [style*=\"position: fixed; bottom\"], [style*=\"position: sticky; bottom\"], .fixed-bottom, .sticky-bottom');"
+                          @"    var footers = document.querySelectorAll('footer, [role=\"contentinfo\"], [id*=\"footer\" i], [class*=\"footer\" i], [style*=\"position: fixed; bottom\" i], [style*=\"position: sticky; bottom\" i], .fixed-bottom, .sticky-bottom');"
                           @"    footers.forEach(el => {"
                           @"      var style = window.getComputedStyle(el);"
                           @"      el.style.position = 'fixed';"
                           @"      el.style.bottom = '0';"
                           @"      el.style.width = '100%';"
+                          @"      el.style.maxWidth = '100%';"
                           @"      el.style.zIndex = '10000';"
                           @"      el.style.transform = 'none';"
                           @"      el.style.webkitTransform = 'none';"
                           @"      el.style.insetBlockEnd = '0';"
                           @"      el.style.left = '0';"
                           @"      el.style.right = '0';"
+                          @"      el.style.margin = '0';"
+                          @"      el.style.padding = '0';"
+                          @"      el.style.boxSizing = 'border-box';"
                           @"      console.log('Fixed footer: ', el.tagName, el.id, el.className, 'bottom: ' + style.bottom, 'position: ' + style.position, 'offsetTop: ' + el.offsetTop, 'scrollY: ' + window.scrollY, 'time: ' + Date.now(), 'isTouchEvent: ' + isTouchEvent, 'computedStyle: ' + JSON.stringify({top: style.top, bottom: style.bottom, transform: style.transform, left: style.left, right: style.right}));"
                           @"    });"
                           @"    if (window.scrollY < 0 || window.scrollY > (document.body.scrollHeight - vh)) {"
@@ -810,21 +827,25 @@ enum HeaderBehaviour {
                           @"      console.log('Corrected overscroll, scrollY: ' + window.scrollY, 'time: ' + Date.now());"
                           @"    }"
                           @"    console.log('Enforced fixed elements, viewport height: ' + vh, 'scrollY: ' + window.scrollY, 'clientHeight: ' + document.documentElement.clientHeight, 'time: ' + Date.now(), 'isTouchEvent: ' + isTouchEvent);"
-                          @"    if (!isTouchEvent) {"
-                          @"      requestAnimationFrame(function() { enforceFixedElements(false); });"
-                          @"    }"
+                          @"  }"
+                          @"  function monitorDOMChanges() {"
+                          @"    const observer = new MutationObserver((mutations) => {"
+                          @"      mutations.forEach((mutation) => {"
+                          @"        if (mutation.addedNodes.length || mutation.removedNodes.length) {"
+                          @"          enforceFixedElements(false);"
+                          @"        }"
+                          @"      });"
+                          @"    });"
+                          @"    observer.observe(document.body, { childList: true, subtree: true });"
+                          @"    return observer;"
                           @"  }"
                           @"  enforceFixedElements(false);"
-                          @"  window.addEventListener('touchstart', function(e) {"
-                          @"    console.log('Touchstart event, touches: ' + e.touches.length, 'scrollY: ' + window.scrollY, 'time: ' + Date.now());"
-                          @"    enforceFixedElements(true);"
-                          @"  });"
-                          @"  window.addEventListener('touchmove', function(e) {"
-                          @"    console.log('Touchmove event, touches: ' + e.touches.length, 'scrollY: ' + window.scrollY, 'time: ' + Date.now());"
-                          @"    enforceFixedElements(true);"
-                          @"  });"
-                          @"  window.addEventListener('resize', function() { enforceFixedElements(false); });"
-                          @"  window.addEventListener('load', function() { enforceFixedElements(false); });"
+                          @"  const observer = monitorDOMChanges();"
+                          @"  window.addEventListener('touchstart', () => enforceFixedElements(true));"
+                          @"  window.addEventListener('touchmove', () => enforceFixedElements(true));"
+                          @"  window.addEventListener('resize', () => enforceFixedElements(false));"
+                          @"  window.addEventListener('load', () => enforceFixedElements(false));"
+                          @"  window.addEventListener('scroll', () => enforceFixedElements(true));"
                           @"  if (!document.querySelector('meta[name=viewport]')) {"
                           @"    let meta = document.createElement('meta');"
                           @"    meta.name = 'viewport';"
@@ -1197,7 +1218,7 @@ enum HeaderBehaviour {
     NSLog(@"Swipe detected: %@", swipeDirection);
     NSLog(@"Translation: %@", NSStringFromCGPoint(translation));
 
-    // Log scroll view state if a web view is present
+    // Log and update scroll view state if a web view is present
     if (self.currentWebState) {
       UIView *webView = self.currentWebState->GetView();
       if ([webView isKindOfClass:[WKWebView class]]) {
@@ -1206,6 +1227,32 @@ enum HeaderBehaviour {
         NSLog(@"ScrollView contentSize: %@", NSStringFromCGSize(scrollView.contentSize));
         NSLog(@"ScrollView scrollEnabled: %d", scrollView.scrollEnabled);
         _lastContentOffset = scrollView.contentOffset; // Update last known offset
+        [self configureScrollView:scrollView]; // Ensure consistent scroll view settings
+      }
+    }
+  } else if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled) {
+    // Reset web view frame after gesture ends to prevent drift
+    if (self.currentWebState && !self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+      UIView *webView = self.viewForCurrentWebState;
+      if (webView && self.containerView) {
+        CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
+        CGRect viewFrame = self.contentArea.bounds;
+        viewFrame.origin.y = topInset;
+        viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
+
+        self.containerView.frame = viewFrame;
+        self.containerView.bounds = viewFrame;
+        webView.frame = self.containerView.bounds;
+        webView.bounds = self.containerView.bounds;
+
+        if ([webView isKindOfClass:[WKWebView class]]) {
+          UIScrollView *scrollView = [(WKWebView *)webView scrollView];
+          [self configureScrollView:scrollView]; // Reapply scroll view settings
+          scrollView.contentOffset = _lastContentOffset; // Restore offset
+        }
+
+        NSLog(@"handleContentPanGesture: Reset container view frame: %@", NSStringFromCGRect(viewFrame));
+        NSLog(@"handleContentPanGesture: Web view frame: %@", NSStringFromCGRect(webView.frame));
       }
     }
   }
@@ -1232,13 +1279,13 @@ enum HeaderBehaviour {
 
   // Adjust web view for non-NTP pages, respecting toolbars
   if (self.currentWebState && !self.ntpCoordinator.isNTPActiveForCurrentWebState) {
-        // Start web view at top of content area to ensure clickability
-    CGFloat topInset = 0; // No offset to allow touches near Dynamic Island
+    // Start web view below Dynamic Island/status bar + padding
+    CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
 
-    // Calculate frame to span full content area height
+    // Calculate frame to span full content area height starting at topInset
     CGRect viewFrame = self.contentArea.bounds;
     viewFrame.origin.y = topInset;
-    viewFrame.size.height = self.contentArea.bounds.size.height;
+    viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
 
     UIView *webView = self.viewForCurrentWebState;
 
@@ -1258,42 +1305,25 @@ enum HeaderBehaviour {
       }
     }
 
-    // Only update frame if it has changed to avoid resetting scroll position
-    if (!CGRectEqualToRect(self.containerView.frame, viewFrame)) {
-      // Store current contentOffset if available
-      CGPoint currentOffset = _lastContentOffset;
-      if ([webView isKindOfClass:[WKWebView class]]) {
-        currentOffset = [(WKWebView *)webView scrollView].contentOffset;
-      }
-
-      self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
-      [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
-      webView.translatesAutoresizingMaskIntoConstraints = YES;
-      [NSLayoutConstraint deactivateConstraints:webView.constraints];
-      [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
-        subview.translatesAutoresizingMaskIntoConstraints = YES;
-        [NSLayoutConstraint deactivateConstraints:subview.constraints];
-      }];
-      self.containerView.frame = viewFrame;
-      self.containerView.bounds = viewFrame;
-      webView.frame = self.containerView.bounds;
-      webView.bounds = self.containerView.bounds;
-
-      // Restore contentOffset to prevent jump
-      if ([webView isKindOfClass:[WKWebView class]]) {
-        [(WKWebView *)webView scrollView].contentOffset = currentOffset;
-      }
-
-      NSLog(@"viewDidLayoutSubviews: Set container view frame: %@", NSStringFromCGRect(viewFrame));
-      NSLog(@"viewDidLayoutSubviews: Web view frame: %@", NSStringFromCGRect(webView.frame));
-      NSLog(@"viewDidLayoutSubviews: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
-      NSLog(@"viewDidLayoutSubviews: Web view constraints: %@", webView.constraints);
-      NSLog(@"viewDidLayoutSubviews: Container view superview: %@", self.containerView.superview);
-      dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"viewDidLayoutSubviews: Container view frame after layout: %@", NSStringFromCGRect(self.containerView.frame));
-        NSLog(@"viewDidLayoutSubviews: Web view frame after layout: %@", NSStringFromCGRect(webView.frame));
-      });
+    // Store current contentOffset if available
+    CGPoint currentOffset = _lastContentOffset;
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      currentOffset = [(WKWebView *)webView scrollView].contentOffset;
     }
+
+    // Always update frame to enforce correct positioning
+    self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+    webView.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:webView.constraints];
+    [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+      subview.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:subview.constraints];
+    }];
+    self.containerView.frame = viewFrame;
+    self.containerView.bounds = viewFrame;
+    webView.frame = self.containerView.bounds;
+    webView.bounds = self.containerView.bounds;
 
     // Adjust scroll view properties
     if ([webView isKindOfClass:[WKWebView class]]) {
@@ -1303,18 +1333,32 @@ enum HeaderBehaviour {
       scrollView.clipsToBounds = NO;
       scrollView.scrollEnabled = YES;
       scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+      scrollView.bounces = NO;
+      scrollView.alwaysBounceVertical = NO;
       scrollView.delegate = self;
-      // Force contentSize to match frame height
+      // Enforce contentSize to at least match frame height
       if (scrollView.contentSize.height < viewFrame.size.height) {
         scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
         NSLog(@"viewDidLayoutSubviews: Forced contentSize height to %f", viewFrame.size.height);
       }
+      // Restore contentOffset to prevent jump
+      scrollView.contentOffset = currentOffset;
       // Add KVO for scroll view contentSize
       [scrollView addObserver:self
                    forKeyPath:@"contentSize"
                       options:NSKeyValueObservingOptionNew
                       context:nil];
     }
+
+    NSLog(@"viewDidLayoutSubviews: Set container view frame: %@", NSStringFromCGRect(viewFrame));
+    NSLog(@"viewDidLayoutSubviews: Web view frame: %@", NSStringFromCGRect(webView.frame));
+    NSLog(@"viewDidLayoutSubviews: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
+    NSLog(@"viewDidLayoutSubviews: Web view constraints: %@", webView.constraints);
+    NSLog(@"viewDidLayoutSubviews: Container view superview: %@", self.containerView.superview);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSLog(@"viewDidLayoutSubviews: Container view frame after layout: %@", NSStringFromCGRect(self.containerView.frame));
+      NSLog(@"viewDidLayoutSubviews: Web view frame after layout: %@", NSStringFromCGRect(webView.frame));
+    });
   }
 
   if (self.ntpCoordinator.isNTPActiveForCurrentWebState && self.webUsageEnabled) {
@@ -1645,75 +1689,41 @@ enum HeaderBehaviour {
 
 #pragma mark - UIScrollViewDelegate
 
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-  // Clamp contentOffset.y immediately to prevent overscroll affecting fixed elements
+// Helper method to configure scroll view consistently
+- (void)configureScrollView:(UIScrollView *)scrollView {
+  // Calculate expected content size
+  CGSize expectedContentSize;
+  if (self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
+  } else {
+    expectedContentSize = CGSizeMake(scrollView.contentSize.width, MAX(self.containerView.bounds.size.height, scrollView.contentSize.height));
+  }
+
+  // Enforce content size
+  if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
+    NSLog(@"configureScrollView: Correcting contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
+    scrollView.contentSize = expectedContentSize;
+  }
+
+  // Clamp contentOffset.y to prevent overscroll
   CGFloat maxOffsetY = MAX(0, scrollView.contentSize.height - scrollView.bounds.size.height);
   CGFloat clampedOffsetY = MIN(MAX(scrollView.contentOffset.y, 0), maxOffsetY);
   if (fabs(scrollView.contentOffset.y - clampedOffsetY) > 0.01) {
     scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, clampedOffsetY);
-    NSLog(@"scrollViewDidScroll: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
+    NSLog(@"configureScrollView: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
   }
 
-  // Enforce full contentSize for non-NTP pages to ensure content reaches bottom
-  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
-    CGFloat expectedHeight = self.containerView.bounds.size.height;
-    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
-      NSLog(@"scrollViewDidScroll: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
-      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
-    }
-  } else {
-    // For NTP, enforce contentSize to match container bounds
-    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
-    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
-      NSLog(@"scrollViewDidScroll: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
-      scrollView.contentSize = expectedContentSize;
-    }
-  }
-
-  // Ensure consistent scroll view settings
+  // Enforce consistent settings
   scrollView.contentInset = UIEdgeInsetsZero;
   scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
   scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
   scrollView.bounces = NO;
   scrollView.alwaysBounceVertical = NO;
+  scrollView.scrollEnabled = YES;
+  scrollView.delegate = self;
 
   _lastContentOffset = scrollView.contentOffset;
-  NSLog(@"scrollViewDidScroll: contentOffset: %@, contentSize: %@, bounds: %@, maxOffsetY: %f, scrollEnabled: %d, time: %ld", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds), maxOffsetY, scrollView.scrollEnabled, (long)NSDate.date.timeIntervalSince1970 * 1000);
-}
-
-- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
-  // Clamp contentOffset.y immediately to prevent overscroll
-  CGFloat maxOffsetY = MAX(0, scrollView.contentSize.height - scrollView.bounds.size.height);
-  CGFloat clampedOffsetY = MIN(MAX(scrollView.contentOffset.y, 0), maxOffsetY);
-  if (fabs(scrollView.contentOffset.y - clampedOffsetY) > 0.01) {
-    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, clampedOffsetY);
-    NSLog(@"scrollViewWillBeginDragging: Clamped contentOffset.y from %f to %f", scrollView.contentOffset.y, clampedOffsetY);
-  }
-
-  // Enforce contentSize and settings before scrolling starts
-  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
-    CGFloat expectedHeight = self.containerView.bounds.size.height;
-    if (fabs(scrollView.contentSize.height - expectedHeight) > 0.01) {
-      NSLog(@"scrollViewWillBeginDragging: Correcting contentSize height from %f to %f", scrollView.contentSize.height, expectedHeight);
-      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, expectedHeight);
-    }
-  } else {
-    CGSize expectedContentSize = CGSizeMake(self.containerView.bounds.size.width, self.containerView.bounds.size.height);
-    if (!CGSizeEqualToSize(scrollView.contentSize, expectedContentSize)) {
-      NSLog(@"scrollViewWillBeginDragging: Correcting NTP contentSize from %@ to %@", NSStringFromCGSize(scrollView.contentSize), NSStringFromCGSize(expectedContentSize));
-      scrollView.contentSize = expectedContentSize;
-    }
-  }
-
-  // Ensure consistent scroll view settings
-  scrollView.contentInset = UIEdgeInsetsZero;
-  scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-  scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-  scrollView.bounces = NO;
-  scrollView.alwaysBounceVertical = NO;
-
-  _lastContentOffset = scrollView.contentOffset;
-  NSLog(@"scrollViewWillBeginDragging: contentOffset: %@, contentSize: %@, bounds: %@, maxOffsetY: %f", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds), maxOffsetY);
+  NSLog(@"configureScrollView: contentOffset: %@, contentSize: %@, bounds: %@", NSStringFromCGPoint(scrollView.contentOffset), NSStringFromCGSize(scrollView.contentSize), NSStringFromCGRect(scrollView.bounds));
 }
 
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
@@ -2696,11 +2706,11 @@ enum HeaderBehaviour {
 // Updates the browser container view such that its viewport is the space
 // between the primary and secondary toolbars.
 - (void)updateBrowserViewportForFullscreenProgress:(CGFloat)progress {
-  if (!self.currentWebState) {
+  if (!self.currentWebState || self.ntpCoordinator.isNTPActiveForCurrentWebState) {
     return;
   }
 
-  // Calculate top inset for Dynamic Island + padding only
+  // Calculate top inset for Dynamic Island + padding
   CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
 
   // Calculate frame to start below Dynamic Island/status bar + padding
@@ -2708,75 +2718,63 @@ enum HeaderBehaviour {
   viewFrame.origin.y = topInset;
   viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
 
-  // Update container view and web view for non-NTP pages
+  // Update container view and web view
   UIView *webView = self.viewForCurrentWebState;
-  if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
-    // Store current contentOffset if available
-    CGPoint currentOffset = _lastContentOffset;
-    if ([webView isKindOfClass:[WKWebView class]]) {
-      currentOffset = [(WKWebView *)webView scrollView].contentOffset;
-    }
+  if (!webView) {
+    return;
+  }
 
-    if (!self.containerView || self.containerView != webView.superview) {
-      self.containerView = [[UIView alloc] initWithFrame:viewFrame];
-      self.containerView.clipsToBounds = NO; // Allow content to extend for scrolling
-      [webView removeFromSuperview];
-      [self.containerView addSubview:webView];
-      self.browserContainerViewController.contentView = self.containerView;
-      // Add KVO for web view frame
-      if (webView) {
-        [webView addObserver:self
-                  forKeyPath:@"frame"
-                     options:NSKeyValueObservingOptionNew
-                     context:nil];
-      }
-    }
+  // Store current contentOffset
+  CGPoint currentOffset = _lastContentOffset;
+  if ([webView isKindOfClass:[WKWebView class]]) {
+    currentOffset = [(WKWebView *)webView scrollView].contentOffset;
+  }
 
-    // Only update frame if it has changed to avoid resetting scroll position
-    if (!CGRectEqualToRect(self.containerView.frame, viewFrame)) {
-      self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
-      [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
-      webView.translatesAutoresizingMaskIntoConstraints = YES;
-      [NSLayoutConstraint deactivateConstraints:webView.constraints];
-      [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
-        subview.translatesAutoresizingMaskIntoConstraints = YES;
-        [NSLayoutConstraint deactivateConstraints:subview.constraints];
-      }];
-      self.containerView.frame = viewFrame;
-      self.containerView.bounds = viewFrame;
-      webView.frame = self.containerView.bounds;
-      webView.bounds = self.containerView.bounds;
-
-      // Restore contentOffset to prevent jump
-      if ([webView isKindOfClass:[WKWebView class]]) {
-        [(WKWebView *)webView scrollView].contentOffset = currentOffset;
-      }
-
-      // Adjust scroll view settings without overriding content offset
-      if ([webView isKindOfClass:[WKWebView class]]) {
-        UIScrollView *scrollView = [(WKWebView *)webView scrollView];
-        scrollView.clipsToBounds = NO;
-        scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-        scrollView.contentInset = UIEdgeInsetsZero;
-        scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-        scrollView.delegate = self;
-        // Force contentSize to match frame height
-        if (scrollView.contentSize.height < viewFrame.size.height) {
-          scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
-          NSLog(@"updateBrowserViewport: Forced contentSize height to %f", viewFrame.size.height);
-        }
-      }
-
-      // Log frame to detect overrides
-      NSLog(@"updateBrowserViewport: Container view frame: %@", NSStringFromCGRect(self.containerView.frame));
-      NSLog(@"updateBrowserViewport: Web view frame: %@", NSStringFromCGRect(webView.frame));
-      NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
-      dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"updateBrowserViewport: Container view frame after update: %@", NSStringFromCGRect(self.containerView.frame));
-        NSLog(@"updateBrowserViewport: Web view frame after update: %@", NSStringFromCGRect(webView.frame));
-      });
+  // Ensure container view exists
+  if (!self.containerView || self.containerView != webView.superview) {
+    self.containerView = [[UIView alloc] initWithFrame:viewFrame];
+    self.containerView.clipsToBounds = NO; // Allow content to extend for scrolling
+    [webView removeFromSuperview];
+    [self.containerView addSubview:webView];
+    self.browserContainerViewController.contentView = self.containerView;
+    // Add KVO for web view frame
+    if (webView) {
+      [webView addObserver:self
+                forKeyPath:@"frame"
+                   options:NSKeyValueObservingOptionNew
+                   context:nil];
     }
   }
+
+  // Always update frame to enforce correct positioning
+  self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+  webView.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:webView.constraints];
+  [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+    subview.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:subview.constraints];
+  }];
+  self.containerView.frame = viewFrame;
+  self.containerView.bounds = viewFrame;
+  webView.frame = self.containerView.bounds;
+  webView.bounds = self.containerView.bounds;
+
+  // Configure scroll view
+  if ([webView isKindOfClass:[WKWebView class]]) {
+    UIScrollView *scrollView = [(WKWebView *)webView scrollView];
+    [self configureScrollView:scrollView];
+    scrollView.contentOffset = currentOffset; // Restore offset
+  }
+
+  // Log frame to detect overrides
+  NSLog(@"updateBrowserViewport: Container view frame: %@", NSStringFromCGRect(self.containerView.frame));
+  NSLog(@"updateBrowserViewport: Web view frame: %@", NSStringFromCGRect(webView.frame));
+  NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSLog(@"updateBrowserViewport: Container view frame after update: %@", NSStringFromCGRect(self.containerView.frame));
+    NSLog(@"updateBrowserViewport: Web view frame after update: %@", NSStringFromCGRect(webView.frame));
+  });
 }
 
 // Updates the padding of the web view proxy. This either resets the frame of
