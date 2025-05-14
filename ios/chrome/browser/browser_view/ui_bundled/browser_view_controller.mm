@@ -2174,7 +2174,6 @@ enum HeaderBehaviour {
   if ([view isKindOfClass:[WKWebView class]]) {
     scrollView = [(WKWebView*)view scrollView];
   } else if ([view isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
-    // Access WKWebView from CRWWebControllerContainerView
     for (UIView* subview in view.subviews) {
       if ([subview isKindOfClass:[WKWebView class]]) {
         scrollView = [(WKWebView*)subview scrollView];
@@ -2184,32 +2183,54 @@ enum HeaderBehaviour {
     }
   }
 
-  if (scrollView) {
-    if (scrollView.contentSize.height < self.containerView.bounds.size.height) {
-      scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, self.containerView.bounds.size.height);
-      scrollView.contentOffset = _lastContentOffset;
+  // Calculate correct frame
+  CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
+  CGRect viewFrame = self.contentArea.bounds;
+  viewFrame.origin.y = topInset;
+  viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
+
+  // Ensure container view exists
+  if (!self.containerView || self.containerView != view.superview) {
+    self.containerView = [[UIView alloc] initWithFrame:viewFrame];
+    self.containerView.clipsToBounds = NO;
+    [view removeFromSuperview];
+    [self.containerView addSubview:view];
+    self.browserContainerViewController.contentView = self.containerView;
+    if (view) {
+      [view addObserver:self
+             forKeyPath:@"frame"
+                options:NSKeyValueObservingOptionNew
+                context:nil];
     }
-    scrollView.scrollEnabled = YES;
-    scrollView.contentInset = UIEdgeInsetsZero;
-    scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-    scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-    scrollView.bounces = NO;
-    scrollView.alwaysBounceVertical = NO;
-    // Log scroll view state after adjustments
+  }
+
+  // Update frame
+  self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+  view.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:view.constraints];
+  [view.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+    subview.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:subview.constraints];
+  }];
+  self.containerView.frame = viewFrame;
+  self.containerView.bounds = viewFrame;
+  view.frame = self.containerView.bounds;
+  view.bounds = self.containerView.bounds;
+
+  // Configure scroll view if available
+  if (scrollView) {
+    [self configureScrollView:scrollView];
+    scrollView.contentOffset = _lastContentOffset;
     NSLog(@"displayTabView: Adjusted ScrollView contentOffset: %@", NSStringFromCGPoint(scrollView.contentOffset));
     NSLog(@"displayTabView: Adjusted ScrollView contentSize: %@", NSStringFromCGSize(scrollView.contentSize));
     NSLog(@"displayTabView: ScrollView scrollEnabled: %d", scrollView.scrollEnabled);
   } else {
-    NSLog(@"displayTabView: No scroll view found, skipping scroll configuration");
+    NSLog(@"displayTabView: No scroll view found, frame set to: %@", NSStringFromCGRect(viewFrame));
   }
 
-  if (view.superview != self.containerView) {
-    [self.containerView addSubview:view];
-    view.frame = self.containerView.bounds;
-    view.translatesAutoresizingMaskIntoConstraints = YES;
-    [NSLayoutConstraint deactivateConstraints:view.constraints];
-    [self updateBrowserViewportForFullscreenProgress:self.footerFullscreenProgress];
-  }
+  NSLog(@"displayTabView: Container view frame: %@", NSStringFromCGRect(self.containerView.frame));
+  NSLog(@"displayTabView: Web view frame: %@", NSStringFromCGRect(view.frame));
 }
 
 // Starts or stops broadcasting the toolbar UI and main content UI depending on
@@ -2726,8 +2747,18 @@ enum HeaderBehaviour {
 
   // Store current contentOffset
   CGPoint currentOffset = _lastContentOffset;
+  UIScrollView *scrollView = nil;
   if ([webView isKindOfClass:[WKWebView class]]) {
-    currentOffset = [(WKWebView *)webView scrollView].contentOffset;
+    scrollView = [(WKWebView *)webView scrollView];
+    currentOffset = scrollView.contentOffset;
+  } else if ([webView isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
+    for (UIView *subview in webView.subviews) {
+      if ([subview isKindOfClass:[WKWebView class]]) {
+        scrollView = [(WKWebView *)subview scrollView];
+        currentOffset = scrollView.contentOffset;
+        break;
+      }
+    }
   }
 
   // Ensure container view exists
@@ -2746,31 +2777,34 @@ enum HeaderBehaviour {
     }
   }
 
-  // Always update frame to enforce correct positioning
-  self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
-  [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
-  webView.translatesAutoresizingMaskIntoConstraints = YES;
-  [NSLayoutConstraint deactivateConstraints:webView.constraints];
-  [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
-    subview.translatesAutoresizingMaskIntoConstraints = YES;
-    [NSLayoutConstraint deactivateConstraints:subview.constraints];
-  }];
-  self.containerView.frame = viewFrame;
-  self.containerView.bounds = viewFrame;
-  webView.frame = self.containerView.bounds;
-  webView.bounds = self.containerView.bounds;
+  // Only update frame if it has drifted significantly
+  if (fabs(self.containerView.frame.origin.y - viewFrame.origin.y) > 0.01 ||
+      fabs(self.containerView.frame.size.height - viewFrame.size.height) > 0.01) {
+    self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+    webView.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:webView.constraints];
+    [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+      subview.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:subview.constraints];
+    }];
+    self.containerView.frame = viewFrame;
+    self.containerView.bounds = viewFrame;
+    webView.frame = self.containerView.bounds;
+    webView.bounds = self.containerView.bounds;
 
-  // Configure scroll view
-  if ([webView isKindOfClass:[WKWebView class]]) {
-    UIScrollView *scrollView = [(WKWebView *)webView scrollView];
-    [self configureScrollView:scrollView];
-    scrollView.contentOffset = currentOffset; // Restore offset
+    // Configure scroll view if available
+    if (scrollView) {
+      [self configureScrollView:scrollView];
+      scrollView.contentOffset = currentOffset; // Restore offset
+    }
+
+    NSLog(@"updateBrowserViewport: Corrected container view frame: %@", NSStringFromCGRect(self.containerView.frame));
+    NSLog(@"updateBrowserViewport: Corrected web view frame: %@", NSStringFromCGRect(webView.frame));
+    NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
   }
 
   // Log frame to detect overrides
-  NSLog(@"updateBrowserViewport: Container view frame: %@", NSStringFromCGRect(self.containerView.frame));
-  NSLog(@"updateBrowserViewport: Web view frame: %@", NSStringFromCGRect(webView.frame));
-  NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
   dispatch_async(dispatch_get_main_queue(), ^{
     NSLog(@"updateBrowserViewport: Container view frame after update: %@", NSStringFromCGRect(self.containerView.frame));
     NSLog(@"updateBrowserViewport: Web view frame after update: %@", NSStringFromCGRect(webView.frame));
