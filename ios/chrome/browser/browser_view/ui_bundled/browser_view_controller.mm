@@ -1288,6 +1288,26 @@ enum HeaderBehaviour {
     viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
 
     UIView *webView = self.viewForCurrentWebState;
+    UIView *targetWebView = webView; // Track the actual WKWebView for frame setting
+
+    // Store current contentOffset
+    CGPoint currentOffset = _lastContentOffset;
+    UIScrollView *scrollView = nil;
+    
+    if ([webView isKindOfClass:[WKWebView class]]) {
+      scrollView = [(WKWebView *)webView scrollView];
+      currentOffset = scrollView.contentOffset;
+    } else if ([webView isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
+      for (UIView *subview in webView.subviews) {
+        if ([subview isKindOfClass:[WKWebView class]]) {
+          scrollView = [(WKWebView *)subview scrollView];
+          targetWebView = subview; // Use the WKWebView for frame setting
+          currentOffset = scrollView.contentOffset;
+          NSLog(@"viewDidLayoutSubviews: Found WKWebView in CRWWebControllerContainerView");
+          break;
+        }
+      }
+    }
 
     // Wrap the web view in a container to enforce size
     if (!self.containerView || self.containerView != webView.superview) {
@@ -1305,13 +1325,7 @@ enum HeaderBehaviour {
       }
     }
 
-    // Store current contentOffset if available
-    CGPoint currentOffset = _lastContentOffset;
-    if ([webView isKindOfClass:[WKWebView class]]) {
-      currentOffset = [(WKWebView *)webView scrollView].contentOffset;
-    }
-
-    // Always update frame to enforce correct positioning
+    // Always enforce correct frame
     self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
     [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
     webView.translatesAutoresizingMaskIntoConstraints = YES;
@@ -1322,42 +1336,39 @@ enum HeaderBehaviour {
     }];
     self.containerView.frame = viewFrame;
     self.containerView.bounds = viewFrame;
-    webView.frame = self.containerView.bounds;
-    webView.bounds = self.containerView.bounds;
+    targetWebView.frame = self.containerView.bounds;
+    targetWebView.bounds = self.containerView.bounds;
 
-    // Adjust scroll view properties
-    if ([webView isKindOfClass:[WKWebView class]]) {
-      UIScrollView *scrollView = [(WKWebView *)webView scrollView];
-      scrollView.contentInset = UIEdgeInsetsZero;
-      scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-      scrollView.clipsToBounds = NO;
-      scrollView.scrollEnabled = YES;
-      scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-      scrollView.bounces = NO;
-      scrollView.alwaysBounceVertical = NO;
-      scrollView.delegate = self;
-      // Enforce contentSize to at least match frame height
-      if (scrollView.contentSize.height < viewFrame.size.height) {
-        scrollView.contentSize = CGSizeMake(scrollView.contentSize.width, viewFrame.size.height);
-        NSLog(@"viewDidLayoutSubviews: Forced contentSize height to %f", viewFrame.size.height);
+    // Configure scroll view if available
+    if (scrollView) {
+      UIEdgeInsets contentInsets = UIEdgeInsetsZero;
+      if (!self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+        contentInsets.top = self.primaryToolbarHeightConstraint.constant;
+        contentInsets.bottom = self.secondaryToolbarHeightConstraint.constant;
       }
-      // Restore contentOffset to prevent jump
-      scrollView.contentOffset = currentOffset;
+      
+      scrollView.contentInset = contentInsets;
+      scrollView.scrollIndicatorInsets = contentInsets;
+      [self configureScrollView:scrollView];
+      scrollView.contentOffset = currentOffset; // Restore offset
       // Add KVO for scroll view contentSize
       [scrollView addObserver:self
-                   forKeyPath:@"contentSize"
+                  forKeyPath:@"contentSize"
                       options:NSKeyValueObservingOptionNew
                       context:nil];
     }
 
     NSLog(@"viewDidLayoutSubviews: Set container view frame: %@", NSStringFromCGRect(viewFrame));
-    NSLog(@"viewDidLayoutSubviews: Web view frame: %@", NSStringFromCGRect(webView.frame));
+    NSLog(@"viewDidLayoutSubviews: Web view frame: %@", NSStringFromCGRect(targetWebView.frame));
     NSLog(@"viewDidLayoutSubviews: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
-    NSLog(@"viewDidLayoutSubviews: Web view constraints: %@", webView.constraints);
+    NSLog(@"viewDidLayoutSubviews: Web view constraints: %@", targetWebView.constraints);
     NSLog(@"viewDidLayoutSubviews: Container view superview: %@", self.containerView.superview);
     dispatch_async(dispatch_get_main_queue(), ^{
+      if (!CGRectEqualToRect(targetWebView.frame, viewFrame)) {
+        NSLog(@"viewDidLayoutSubviews: Frame drift detected! Expected: %@, Actual: %@", NSStringFromCGRect(viewFrame), NSStringFromCGRect(targetWebView.frame));
+      }
       NSLog(@"viewDidLayoutSubviews: Container view frame after layout: %@", NSStringFromCGRect(self.containerView.frame));
-      NSLog(@"viewDidLayoutSubviews: Web view frame after layout: %@", NSStringFromCGRect(webView.frame));
+      NSLog(@"viewDidLayoutSubviews: Web view frame after layout: %@", NSStringFromCGRect(targetWebView.frame));
     });
   }
 
@@ -1370,6 +1381,59 @@ enum HeaderBehaviour {
     NSLog(@"viewDidLayoutSubviews: NTP view controller frame: %@", NSStringFromCGRect(ntpViewController.view.frame));
     NSLog(@"viewDidLayoutSubviews: NTP view hierarchy: %@", ntpViewController.view.subviews);
   }
+}
+
+- (void)sidebarMenuDidChangeState:(BOOL)isOpen {
+  NSLog(@"sidebarMenuDidChangeState: Sidebar isOpen: %d, Content area frame: %@", 
+        isOpen, NSStringFromCGRect(self.contentArea.frame));
+  
+  // Force web view frame to remain correct
+  if (self.currentWebState && !self.ntpCoordinator.isNTPActiveForCurrentWebState) {
+    CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
+    CGRect viewFrame = self.contentArea.bounds;
+    viewFrame.origin.y = topInset;
+    viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
+
+    UIView *webView = self.viewForCurrentWebState;
+    UIView *targetWebView = webView;
+    if ([webView isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
+      for (UIView *subview in webView.subviews) {
+        if ([subview isKindOfClass:[WKWebView class]]) {
+          targetWebView = subview;
+          NSLog(@"sidebarMenuDidChangeState: Found WKWebView in CRWWebControllerContainerView");
+          break;
+        }
+      }
+    }
+
+    if (self.containerView) {
+      self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+      targetWebView.translatesAutoresizingMaskIntoConstraints = YES;
+      [NSLayoutConstraint deactivateConstraints:targetWebView.constraints];
+      [targetWebView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+        subview.translatesAutoresizingMaskIntoConstraints = YES;
+        [NSLayoutConstraint deactivateConstraints:subview.constraints];
+      }];
+      self.containerView.frame = viewFrame;
+      self.containerView.bounds = viewFrame;
+      targetWebView.frame = self.containerView.bounds;
+      targetWebView.bounds = self.containerView.bounds;
+
+      if ([targetWebView isKindOfClass:[WKWebView class]]) {
+        UIScrollView *scrollView = [(WKWebView *)targetWebView scrollView];
+        [self configureScrollView:scrollView];
+        scrollView.contentOffset = _lastContentOffset; // Restore offset
+      }
+
+      NSLog(@"sidebarMenuDidChangeState: Reset container view frame to: %@", NSStringFromCGRect(self.containerView.frame));
+      NSLog(@"sidebarMenuDidChangeState: Web view frame to: %@", NSStringFromCGRect(targetWebView.frame));
+    }
+  }
+
+  // Force layout to apply changes
+  [self.view setNeedsLayout];
+  [self.view layoutIfNeeded];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -1512,28 +1576,9 @@ enum HeaderBehaviour {
 - (void)dismissViewControllerAnimated:(BOOL)flag
                            completion:(void (^)())completion {
   if (!self.presentedViewController) {
-    // TODO(crbug.com/41364311): On iOS10, UIDocumentMenuViewController and
-    // WKFileUploadPanel somehow combine to call dismiss twice instead of one.
-    // The second call would dismiss the BVC itself, so look for that case and
-    // return early.
-    //
-    // TODO(crbug.com/41370278): A similar bug exists on all iOS versions with
-    // WKFileUploadPanel and UIDocumentPickerViewController.
-    //
-    // To make M65 as safe as possible, return early whenever this method is
-    // invoked but no VC appears to be presented. These cases will always end
-    // up dismissing the BVC itself, which would put the app into an
-    // unresponsive state.
     return;
   }
 
-  // Some calling code invokes `dismissViewControllerAnimated:completion:`
-  // multiple times. Because the BVC is presented, subsequent calls end up
-  // dismissing the BVC itself. This is never what should happen, so check for
-  // this case and return early. It is not enough to check
-  // `self.dismissingModal` because some dismissals do not go through
-  // -[BrowserViewController dismissViewControllerAnimated:completion:`.
-  // TODO(crbug.com/40548564): Fix callers and remove this early return.
   if (self.dismissingModal || self.presentedViewController.isBeingDismissed) {
     return;
   }
@@ -1545,6 +1590,8 @@ enum HeaderBehaviour {
                             completion:^{
                               BrowserViewController* strongSelf = weakSelf;
                               strongSelf.dismissingModal = NO;
+                              // Notify sidebar state change (closing)
+                              [strongSelf sidebarMenuDidChangeState:NO];
                               if (completion) {
                                 completion();
                               }
@@ -2131,106 +2178,100 @@ enum HeaderBehaviour {
 
 // Displays the current webState view.
 - (void)displayTabView {
-  if (self.inNewTabAnimation) {
-    return;
-  }
-
   if (!self.currentWebState) {
-    [self.ntpCoordinator start];
-    UIViewController* ntpController = self.ntpCoordinator.viewController;
-    if (ntpController.view.superview != self.containerView) {
-      [self addChildViewController:ntpController];
-      ntpController.view.frame = [self ntpFrameForCurrentWebState];
-      [self.containerView addSubview:ntpController.view];
-      [ntpController didMoveToParentViewController:self];
-      NSLog(@"displayTabView: NTP view controller frame: %@", NSStringFromCGRect(ntpController.view.frame));
-      NSLog(@"displayTabView: NTP view hierarchy: %@", ntpController.view.subviews);
-    }
+    NSLog(@"displayTabView: No current web state, skipping");
     return;
   }
 
-  if (self.ntpCoordinator.isNTPActiveForCurrentWebState) {
-    [self.ntpCoordinator start];
-    UIViewController* ntpController = self.ntpCoordinator.viewController;
-    if (ntpController.view.superview != self.containerView) {
-      [self addChildViewController:ntpController];
-      ntpController.view.frame = [self ntpFrameForCurrentWebState];
-      [self.containerView addSubview:ntpController.view];
-      [ntpController didMoveToParentViewController:self];
-      NSLog(@"displayTabView: NTP view controller frame: %@", NSStringFromCGRect(ntpController.view.frame));
-      NSLog(@"displayTabView: NTP view hierarchy: %@", ntpController.view.subviews);
-    }
+  // Determine if NTP or web view should be displayed
+  BOOL isNTP = self.ntpCoordinator.isNTPActiveForCurrentWebState;
+  UIView *contentView = isNTP ? self.ntpCoordinator.viewController.view : [self viewForWebState:self.currentWebState];
+  NSString *viewClass = NSStringFromClass([contentView class]);
+  NSLog(@"displayTabView: %s view class: %@", isNTP ? "NTP" : "Web", viewClass);
+
+  // Ensure contentView exists
+  if (!contentView) {
+    NSLog(@"displayTabView: No content view available for %s", isNTP ? "NTP" : "Web");
     return;
   }
 
-  // Non-NTP case
-  UIView* view = [self viewForWebState:self.currentWebState];
-  if (!view) {
+  // Get the container view from BrowserContainerViewController
+  UIView *containerView = self.browserContainerViewController.view;
+  if (!containerView) {
+    NSLog(@"displayTabView: No container view available");
     return;
   }
 
-  NSLog(@"displayTabView: Web view class: %@", NSStringFromClass([view class]));
-  UIScrollView* scrollView = nil;
-  if ([view isKindOfClass:[WKWebView class]]) {
-    scrollView = [(WKWebView*)view scrollView];
-  } else if ([view isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
-    for (UIView* subview in view.subviews) {
-      if ([subview isKindOfClass:[WKWebView class]]) {
-        scrollView = [(WKWebView*)subview scrollView];
-        NSLog(@"displayTabView: Found WKWebView in CRWWebControllerContainerView");
-        break;
-      }
-    }
+  // Remove existing content view if different
+  if (self.containerView && self.containerView != contentView) {
+    [self.containerView removeFromSuperview];
+    self.containerView = nil;
   }
 
-  // Calculate correct frame
-  CGFloat topInset = self.rootSafeAreaInsets.top + kTopPadding;
+  // Set up frame for content view
+  UIEdgeInsets insets = [self rootSafeAreaInsets];
+  CGFloat topInset = insets.top + kTopPadding;
   CGRect viewFrame = self.contentArea.bounds;
   viewFrame.origin.y = topInset;
   viewFrame.size.height = self.contentArea.bounds.size.height - topInset;
 
-  // Ensure container view exists
-  if (!self.containerView || self.containerView != view.superview) {
-    self.containerView = [[UIView alloc] initWithFrame:viewFrame];
-    self.containerView.clipsToBounds = NO;
-    [view removeFromSuperview];
-    [self.containerView addSubview:view];
-    self.browserContainerViewController.contentView = self.containerView;
-    if (view) {
-      [view addObserver:self
-             forKeyPath:@"frame"
-                options:NSKeyValueObservingOptionNew
-                context:nil];
+  // Add content view to BrowserContainerViewController's view hierarchy
+  if (contentView.superview != containerView) {
+    // Ensure contentView's view controller is properly parented
+    UIViewController *contentViewController = nil;
+    if ([contentView isKindOfClass:[UIView class]]) {
+      contentViewController = [self viewControllerForView:contentView];
+    }
+
+    if (contentViewController && contentViewController.parentViewController != self.browserContainerViewController) {
+      [self.browserContainerViewController addChildViewController:contentViewController];
+      [contentViewController didMoveToParentViewController:self.browserContainerViewController];
+    }
+
+    [containerView addSubview:contentView];
+    NSLog(@"displayTabView: Added content view to container view");
+  }
+
+  // Update frame and bounds
+  self.containerView = contentView;
+  self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+  self.containerView.frame = viewFrame;
+  self.containerView.bounds = viewFrame;
+
+  // Handle web view specifics
+  if (!isNTP && [contentView isKindOfClass:NSClassFromString(@"CRWWebControllerContainerView")]) {
+    UIView *targetWebView = contentView;
+    for (UIView *subview in contentView.subviews) {
+      if ([subview isKindOfClass:[WKWebView class]]) {
+        targetWebView = subview;
+        NSLog(@"displayTabView: Found WKWebView in CRWWebControllerContainerView");
+        break;
+      }
+    }
+
+    targetWebView.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:targetWebView.constraints];
+    targetWebView.frame = self.containerView.bounds;
+    targetWebView.bounds = self.containerView.bounds;
+
+    if ([targetWebView isKindOfClass:[WKWebView class]]) {
+      UIScrollView *scrollView = [(WKWebView *)targetWebView scrollView];
+      [self configureScrollView:scrollView];
+      scrollView.contentOffset = _lastContentOffset;
     }
   }
 
-  // Update frame
-  self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
-  [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
-  view.translatesAutoresizingMaskIntoConstraints = YES;
-  [NSLayoutConstraint deactivateConstraints:view.constraints];
-  [view.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
-    subview.translatesAutoresizingMaskIntoConstraints = YES;
-    [NSLayoutConstraint deactivateConstraints:subview.constraints];
-  }];
-  self.containerView.frame = viewFrame;
-  self.containerView.bounds = viewFrame;
-  view.frame = self.containerView.bounds;
-  view.bounds = self.containerView.bounds;
+  NSLog(@"displayTabView: Container view frame after update: %@", NSStringFromCGRect(self.containerView.frame));
+  NSLog(@"displayTabView: Web view frame after update: %@", NSStringFromCGRect(contentView.frame));
+}
 
-  // Configure scroll view if available
-  if (scrollView) {
-    [self configureScrollView:scrollView];
-    scrollView.contentOffset = _lastContentOffset;
-    NSLog(@"displayTabView: Adjusted ScrollView contentOffset: %@", NSStringFromCGPoint(scrollView.contentOffset));
-    NSLog(@"displayTabView: Adjusted ScrollView contentSize: %@", NSStringFromCGSize(scrollView.contentSize));
-    NSLog(@"displayTabView: ScrollView scrollEnabled: %d", scrollView.scrollEnabled);
-  } else {
-    NSLog(@"displayTabView: No scroll view found, frame set to: %@", NSStringFromCGRect(viewFrame));
+- (UIViewController *)viewControllerForView:(UIView *)view {
+  UIResponder *responder = view;
+  while (responder && ![responder isKindOfClass:[UIViewController class]]) {
+    responder = responder.nextResponder;
   }
-
-  NSLog(@"displayTabView: Container view frame: %@", NSStringFromCGRect(self.containerView.frame));
-  NSLog(@"displayTabView: Web view frame: %@", NSStringFromCGRect(view.frame));
+  return [responder isKindOfClass:[UIViewController class]] ? (UIViewController *)responder : nil;
 }
 
 // Starts or stops broadcasting the toolbar UI and main content UI depending on
@@ -2662,12 +2703,25 @@ enum HeaderBehaviour {
 // Updates the ToolbarsSize, which broadcasts any changes to registered
 // listeners.
 - (void)updateToolbarState {
-  _toolbarsSize.collapsedTopToolbarHeight = [self collapsedTopToolbarHeight];
-  _toolbarsSize.expandedTopToolbarHeight = [self expandedTopToolbarHeight];
-  _toolbarsSize.collapsedBottomToolbarHeight =
-      [self collapsedBottomToolbarHeight];
-  _toolbarsSize.expandedBottomToolbarHeight =
-      [self secondaryToolbarHeightWithInset];
+  // Update toolbar visibility and frames based on current state
+  BOOL isNTP = self.ntpCoordinator.isNTPActiveForCurrentWebState;
+  CGFloat toolbarHeight = [self primaryToolbarHeightWithInset];
+
+  // Update primary toolbar height constraint
+  self.primaryToolbarHeightConstraint.constant = toolbarHeight;
+
+  // Update toolbar visibility
+  self.toolbarCoordinator.primaryToolbarViewController.view.hidden = isNTP;
+  self.toolbarCoordinator.secondaryToolbarViewController.view.hidden = isNTP;
+
+  // Log toolbar and content area state
+  NSLog(@"updateToolbarState: Toolbar height: %f, Content area frame: %@", 
+        toolbarHeight, 
+        NSStringFromCGRect(self.contentArea.frame));
+
+  // Force layout to ensure web view frame is correct
+  [self.view setNeedsLayout];
+  [self.view layoutIfNeeded];
 }
 
 // Returns the height difference between the fully expanded and fully collapsed
@@ -2748,6 +2802,7 @@ enum HeaderBehaviour {
   // Store current contentOffset
   CGPoint currentOffset = _lastContentOffset;
   UIScrollView *scrollView = nil;
+  UIView *targetWebView = webView; // Track the actual WKWebView for frame setting
   if ([webView isKindOfClass:[WKWebView class]]) {
     scrollView = [(WKWebView *)webView scrollView];
     currentOffset = scrollView.contentOffset;
@@ -2755,7 +2810,9 @@ enum HeaderBehaviour {
     for (UIView *subview in webView.subviews) {
       if ([subview isKindOfClass:[WKWebView class]]) {
         scrollView = [(WKWebView *)subview scrollView];
+        targetWebView = subview; // Use the WKWebView for frame setting
         currentOffset = scrollView.contentOffset;
+        NSLog(@"updateBrowserViewport: Found WKWebView in CRWWebControllerContainerView");
         break;
       }
     }
@@ -2777,37 +2834,37 @@ enum HeaderBehaviour {
     }
   }
 
-  // Only update frame if it has drifted significantly
-  if (fabs(self.containerView.frame.origin.y - viewFrame.origin.y) > 0.01 ||
-      fabs(self.containerView.frame.size.height - viewFrame.size.height) > 0.01) {
-    self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
-    [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
-    webView.translatesAutoresizingMaskIntoConstraints = YES;
-    [NSLayoutConstraint deactivateConstraints:webView.constraints];
-    [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
-      subview.translatesAutoresizingMaskIntoConstraints = YES;
-      [NSLayoutConstraint deactivateConstraints:subview.constraints];
-    }];
-    self.containerView.frame = viewFrame;
-    self.containerView.bounds = viewFrame;
-    webView.frame = self.containerView.bounds;
-    webView.bounds = self.containerView.bounds;
+  // Always enforce correct frame to prevent drift
+  self.containerView.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:self.containerView.constraints];
+  webView.translatesAutoresizingMaskIntoConstraints = YES;
+  [NSLayoutConstraint deactivateConstraints:webView.constraints];
+  [webView.subviews enumerateObjectsUsingBlock:^(UIView *subview, NSUInteger idx, BOOL *stop) {
+    subview.translatesAutoresizingMaskIntoConstraints = YES;
+    [NSLayoutConstraint deactivateConstraints:subview.constraints];
+  }];
+  self.containerView.frame = viewFrame;
+  self.containerView.bounds = viewFrame;
+  targetWebView.frame = self.containerView.bounds;
+  targetWebView.bounds = self.containerView.bounds;
 
-    // Configure scroll view if available
-    if (scrollView) {
-      [self configureScrollView:scrollView];
-      scrollView.contentOffset = currentOffset; // Restore offset
-    }
-
-    NSLog(@"updateBrowserViewport: Corrected container view frame: %@", NSStringFromCGRect(self.containerView.frame));
-    NSLog(@"updateBrowserViewport: Corrected web view frame: %@", NSStringFromCGRect(webView.frame));
-    NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
+  // Configure scroll view if available
+  if (scrollView) {
+    [self configureScrollView:scrollView];
+    scrollView.contentOffset = currentOffset; // Restore offset
   }
+
+  NSLog(@"updateBrowserViewport: Set container view frame: %@", NSStringFromCGRect(self.containerView.frame));
+  NSLog(@"updateBrowserViewport: Set web view frame: %@", NSStringFromCGRect(targetWebView.frame));
+  NSLog(@"updateBrowserViewport: Restored contentOffset: %@", NSStringFromCGPoint(currentOffset));
 
   // Log frame to detect overrides
   dispatch_async(dispatch_get_main_queue(), ^{
+    if (!CGRectEqualToRect(targetWebView.frame, viewFrame)) {
+      NSLog(@"updateBrowserViewport: Frame drift detected! Expected: %@, Actual: %@", NSStringFromCGRect(viewFrame), NSStringFromCGRect(targetWebView.frame));
+    }
     NSLog(@"updateBrowserViewport: Container view frame after update: %@", NSStringFromCGRect(self.containerView.frame));
-    NSLog(@"updateBrowserViewport: Web view frame after update: %@", NSStringFromCGRect(webView.frame));
+    NSLog(@"updateBrowserViewport: Web view frame after update: %@", NSStringFromCGRect(targetWebView.frame));
   });
 }
 
@@ -3436,6 +3493,9 @@ enum HeaderBehaviour {
 - (void)handleRightToLeftSwipe:(UISwipeGestureRecognizer*)gesture {
   if (gesture.state == UIGestureRecognizerStateEnded) {
     NSLog(@"Right-to-left swipe detected");
+
+    // Notify sidebar state change (opening)
+    [self sidebarMenuDidChangeState:YES];
 
     // Present URLInputViewController with slide animation
     URLInputViewController* menuVC = [[URLInputViewController alloc] init];
