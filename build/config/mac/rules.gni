@@ -54,7 +54,7 @@ template("mac_info_plist") {
       "MACOSX_DEPLOYMENT_TARGET=$mac_deployment_target",
       "CHROMIUM_MIN_SYSTEM_VERSION=$mac_min_system_version",
       "XCODE_BUILD=$xcode_build",
-      "XCODE_VERSION=$xcode_version",
+      "XCODE_VERSION=$mac_xcode_version",
     ]
     if (defined(invoker.extra_substitutions)) {
       extra_substitutions += invoker.extra_substitutions

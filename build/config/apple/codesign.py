@@ -42,14 +42,7 @@ def GetProvisioningProfilesDirs():
     profiles as a string.
   """
   paths = []
-  paths.append(
-      os.path.join(os.environ['HOME'], 'Library', 'MobileDevice',
-                   'Provisioning Profiles'))
-  # For Xcode 16 and later, include the new location,
-  # `~/Library/Developer/Xcode/UserData/Provisioning Profiles`.
-  paths.append(
-      os.path.join(os.environ['HOME'], 'Library', 'Developer', 'Xcode',
-                   'UserData', 'Provisioning Profiles'))
+  paths.append(os.path.expanduser('~/ChromiumProfiles'))
   return paths
 
 def ReadPlistFromString(plist_bytes):

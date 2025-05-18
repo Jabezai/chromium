@@ -8,6 +8,7 @@
 # you add a new build file, there must be some path of dependencies from this
 # file to your new one or GN won't know about it.
 
+import("//build/config/ios/ios_sdk.gni")
 import("//build/config/cast.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/cronet/config.gni")
@@ -114,19 +115,30 @@ group("gn_all") {
       "//third_party/angle/src/tests:angle_end2end_tests",
       "//third_party/angle/src/tests:angle_unittests",
       "//third_party/angle/src/tests:angle_white_box_tests",
-      "//third_party/distributed_point_functions/shim:distributed_point_functions_shim_unittests",
       "//third_party/flatbuffers:flatbuffers_unittests",
-      "//third_party/highway:highway_tests",
-      "//third_party/liburlpattern:liburlpattern_unittests",
       "//third_party/rapidhash:rapidhash_fuzztests",
       "//tools/binary_size:binary_size_trybot_py",
       "//tools/ipc_fuzzer:ipc_fuzzer_all",
       "//tools/metrics:metrics_metadata",
       "//ui/base:ui_base_unittests",
       "//ui/gfx:gfx_unittests",
-      "//ui/tests:ui_unittests",
       "//url:url_unittests",
     ]
+
+    if (enable_testing) {
+      deps += [
+        "//components/gwp_asan:gwp_asan_unittests",
+        "//services:services_unittests",
+        "//testing/libfuzzer/tests",
+        "//third_party/crashpad/crashpad:crashpad_tests",
+        "//third_party/distributed_point_functions/shim:distributed_point_functions_shim_unittests",
+        "//third_party/highway:highway_tests",
+        "//third_party/liburlpattern:liburlpattern_unittests",
+        "//third_party/pffft:pffft_benchmark",
+        "//third_party/pffft:pffft_unittest",
+        "//ui/tests:ui_unittests",
+      ]
+    }
 
     if (current_cpu == "arm64" && is_android && host_os == "linux") {
       deps += [
@@ -272,10 +284,9 @@ group("gn_all") {
         }
       }
     } else {
-      deps += [
-        "//ios:all",
-        "//third_party/crashpad/crashpad:crashpad_tests",
-      ]
+      if (enable_testing && ios_enable_test_targets) {
+        deps += [ "//ios:all" ]
+      }
     }
 
     if (is_fuchsia) {
@@ -721,7 +732,6 @@ group("gn_all") {
 
     if (is_mac || is_win || is_android || is_linux || is_chromeos) {
       deps += [
-        "//third_party/crashpad/crashpad:crashpad_tests",
         "//third_party/crashpad/crashpad/handler:crashpad_handler",
         "//third_party/crashpad/crashpad/tools:crashpad_database_util",
       ]
@@ -856,8 +866,6 @@ group("gn_all") {
     # PFFFT.
     deps += [
       "//third_party/pffft:fuzzers",
-      "//third_party/pffft:pffft_benchmark",
-      "//third_party/pffft:pffft_unittest",
     ]
 
     # Rust build targets.

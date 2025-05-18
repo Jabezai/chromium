@@ -1,0 +1,8 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project out/build/all.xcodeproj -scheme OpenExtension -configuration Debug -destination platform=iOS,name=iPhone -allowProvisioningUpdates build
+
+User defaults from command line:
+    IDEPackageSupportUseBuiltinSCM = YES
+
+2025-05-16 23:20:05.750 xcodebuild[26761:8769268] Writing error result bundle to /var/folders/5m/0hwytxr57qggtvddsw3jb6100000gn/T/ResultBundle_2025-16-05_23-20-0005.xcresult
+xcodebuild: error: The project named "all" does not contain a scheme named "OpenExtension". The "-list" option can be used to find the names of the schemes in the project.

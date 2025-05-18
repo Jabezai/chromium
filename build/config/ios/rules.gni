@@ -89,8 +89,8 @@ template("ios_info_plist") {
       "IOS_SUPPORTED_PLATFORM=$ios_sdk_platform",
       "BUILD_MACHINE_OS_BUILD=$machine_os_build",
       "IOS_DEPLOYMENT_TARGET=$ios_deployment_target",
-      "XCODE_BUILD=$xcode_build",
-      "XCODE_VERSION=$xcode_version",
+      "XCODE_BUILD=$ios_xcode_build",
+      "XCODE_VERSION=$ios_xcode_version",
     ]
     if (defined(invoker.extra_substitutions)) {
       extra_substitutions += invoker.extra_substitutions
@@ -407,7 +407,7 @@ template("ios_app_bundle") {
       if (xcode_version_int >= 1530) {
         args += [
           "--xcode-version",
-          xcode_build,
+          ios_xcode_build,
         ]
       }
     }
@@ -1378,7 +1378,7 @@ template("ios_xcuitest_test_runner_bundle") {
     args = [
              "merge",
              "-f=xml1",
-             "-x=$xcode_version",
+             "-x=$ios_xcode_version",
              "-o=" + rebase_path(_output_name, root_build_dir),
            ] + rebase_path(sources, root_build_dir)
 

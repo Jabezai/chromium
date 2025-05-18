@@ -13,6 +13,7 @@ source_set("dns") {
   visibility = [
     "//net",
     "//net/http:transport_security_state_generated_files",
+    "//net:net_apple",
   ]
 
   # Internals only intended for use inside network stack (and tests).

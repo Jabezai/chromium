@@ -1,0 +1,19 @@
+ERROR at //ios/chrome/app/BUILD.gn:801:51: Undefined identifier
+          "//ios/chrome/intents_extension/appex(${_extension_toolchain})"
+                                                  ^-------------------
+See //ios/BUILD.gn:23:7: which caused the file to be included.
+      "//ios/chrome/app:chrome",
+      ^------------------------
+Traceback (most recent call last):
+  File "/Volumes/MD/chromium/src/ios/build/tools/setup-gn.py", line 436, in <module>
+    sys.exit(Main(sys.argv[1:]))
+             ^^^^^^^^^^^^^^^^^^
+  File "/Volumes/MD/chromium/src/ios/build/tools/setup-gn.py", line 430, in Main
+    GenerateXcodeProject(gn_path, args.root, args.proj_name, out_dir, settings)
+  File "/Volumes/MD/chromium/src/ios/build/tools/setup-gn.py", line 292, in GenerateXcodeProject
+    generator.Generate(gn_path, proj_name, root_dir, temp_path)
+  File "/Volumes/MD/chromium/src/ios/build/tools/setup-gn.py", line 164, in Generate
+    subprocess.check_call(self.GetGnCommand(
+  File "/Users/charles/depot_tools/bootstrap-2@3.11.8.chromium.35_bin/python3/lib/python3.11/subprocess.py", line 413, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command '['/Users/charles/depot_tools/gn', '--root=/Volumes/MD/chromium/src', '-q', '--ide=xcode', '--ninja-executable=autoninja', '--xcode-build-system=new', '--xcode-project=all', '--xcode-additional-files-patterns=*.md;*_google_chrome_*.grd;OWNERS;DEPS', '--xcode-additional-files-roots=//ios;//ios_internal;//docs;//components', '--xcode-configs=Debug;Release;Profile;Official', '--xcode-config-build-dir=//out/${CONFIGURATION}${EFFECTIVE_PLATFORM_NAME}', '--filters=//base:base_unittests;//components:components_unittests;//crypto:crypto_unittests;//google_apis:google_apis_unittests;//ios/*;//ios_internal/*;//net:net_unittests;//services:services_unittests;//skia:skia_unittests;//sql:sql_unittests;//ui/base:ui_base_unittests;//ui/gfx:gfx_unittests;//url:url_unittests;//third_party/crashpad/*;//components/gwp_asan:gwp_asan_unittests', 'gen', '//out/_temphu30d_w6']' returned non-zero exit status 1.

@@ -21,7 +21,7 @@ template("ios_toolchain") {
 
     toolchain_args = {
       forward_variables_from(invoker.toolchain_args, "*")
-      xcode_build = xcode_build
+      xcode_build = ios_xcode_build
       current_os = "ios"
     }
   }

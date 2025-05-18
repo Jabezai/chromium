@@ -44,7 +44,7 @@
 		</dict>
 	</dict>
 	<key>CFBundleIdentifier</key>
-	<string>${BUNDLE_IDENTIFIER}</string>
+	<string>com.charleslee.chromium</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

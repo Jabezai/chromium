@@ -149,10 +149,6 @@
 #import "services/network/public/cpp/shared_url_loader_factory.h"
 #import "ui/base/device_form_factor.h"
 
-#if BUILDFLAG(IOS_CREDENTIAL_PROVIDER_ENABLED)
-#import "ios/chrome/app/credential_provider_migrator_app_agent.h"
-#endif
-
 #if BUILDFLAG(IOS_ENABLE_SANDBOX_DUMP)
 #import "ios/chrome/app/dump_documents_statistics.h"
 #endif
@@ -989,9 +985,6 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
 - (void)addPostSafeModeAgents {
   [self.appState addAgent:[[EnterpriseAppAgent alloc] init]];
   [self.appState addAgent:[[IncognitoUsageAppStateAgent alloc] init]];
-#if BUILDFLAG(IOS_CREDENTIAL_PROVIDER_ENABLED)
-  [self.appState addAgent:[[CredentialProviderMigratorAppAgent alloc] init]];
-#endif
   [self.appState addAgent:[[DefaultBrowserBannerPromoAppAgent alloc] init]];
 }
 

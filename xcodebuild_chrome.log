@@ -1,0 +1,7 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project out/build/all.xcodeproj -scheme chrome -configuration Debug -destination platform=iOS,id=00008110-000A518C2E6A801E -allowProvisioningUpdates -allowProvisioningDeviceRegistration "CODE_SIGN_IDENTITY=Apple Development: charlesjhlee@gmail.com (MZWD93C8JQ)" CODE_SIGN_STYLE=Automatic build -verbose
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = Apple Development: charlesjhlee@gmail.com (MZWD93C8JQ)
+    CODE_SIGN_STYLE = Automatic
+

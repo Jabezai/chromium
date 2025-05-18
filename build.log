@@ -1,0 +1,6 @@
+ninja: Entering directory `out/Debug-iphoneos'
+[1/1] python3 ../../build/config/apple/codesign.py code-sign-bundle -t=iphoneos -i=AE23F46D2F600C759D700E36A5F67A33ECAE5ACD -b=obj/ios/chrome/app/Chromium -e=gen/ios/chrome/app/Chromium.entitlements Chromium.app -P=../../build/apple/plist_util.py -p=gen/ios/chrome/app/chrome_generate_info_plist.plist -p=gen/ios/chrome/app/chrome_partial_info.plist
+FAILED: Chromium.app/Chromium Chromium.app/_CodeSignature/CodeResources Chromium.app/embedded.mobileprovision Chromium.app/Info.plist 
+python3 ../../build/config/apple/codesign.py code-sign-bundle -t=iphoneos -i=AE23F46D2F600C759D700E36A5F67A33ECAE5ACD -b=obj/ios/chrome/app/Chromium -e=gen/ios/chrome/app/Chromium.entitlements Chromium.app -P=../../build/apple/plist_util.py -p=gen/ios/chrome/app/chrome_generate_info_plist.plist -p=gen/ios/chrome/app/chrome_partial_info.plist
+Error: no mobile provisioning profile found for "org.divdio.ost.chrome.ios.dev" in [].
+ninja: build stopped: subcommand failed.

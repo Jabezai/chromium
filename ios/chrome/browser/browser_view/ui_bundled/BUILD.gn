@@ -2,6 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+config("suppress_deprecations") {
+  cflags = [ "-Wno-deprecated-declarations" ]
+}
+
 source_set("ui_bundled") {
   sources = [
     "browser_coordinator+Testing.h",
@@ -20,6 +24,7 @@ source_set("ui_bundled") {
     "tab_lifecycle_mediator.h",
     "tab_lifecycle_mediator.mm",
   ]
+  configs += [ ":suppress_deprecations" ]
   deps = [
     "//base",
     "//base:i18n",

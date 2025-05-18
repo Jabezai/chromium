@@ -28,6 +28,10 @@ if (is_android) {
   import("//build/config/ios/bundle_data_from_filelist.gni")
 }
 
+config("suppress_deprecations") {
+  cflags = [ "-Wno-deprecated-declarations" ]
+}
+
 # Android:
 # The way the cache uses mmap() is inefficient on some Android devices. If
 # this flag is set, we hackily avoid using mmap() in the disk cache. We are
@@ -144,6 +148,51 @@ buildflag_header("cronet_buildflags") {
 proto_library("device_bound_sessions_storage_proto") {
   proto_in_dir = "//"
   sources = [ "device_bound_sessions/proto/storage.proto" ]
+}
+
+source_set("net_apple") {
+  sources = [
+    "base/apple/http_response_headers_util.mm",
+    "base/apple/url_conversions.mm",
+    "base/network_change_notifier_apple.mm",
+    "base/network_config_watcher_apple.cc",
+    "base/platform_mime_util_apple.mm",
+    "cert/x509_util_apple.cc",
+    "proxy_resolution/proxy_chain_util_apple.cc",
+    "proxy_resolution/proxy_resolver_apple.cc",
+  ]
+  configs += [ ":suppress_deprecations" ]
+  deps = [
+    ":constants",
+    ":cronet_buildflags",
+    ":net_export_header",
+    ":net_public_deps",
+    "//base",
+    "//net/dns",
+    "//third_party/protobuf:protobuf_lite",
+    "//third_party/zlib",
+    "//url",
+    "//url:buildflags",
+  ]
+  public_configs = [
+    ":net_internal_config",
+    "//build/config:precompiled_headers",
+    "//build/config/compiler:wexit_time_destructors",
+  ]
+  check_includes = false
+  if (is_ios) {
+    libs = [ "resolv" ]
+    frameworks = [
+      "CFNetwork.framework",
+      "MobileCoreServices.framework",
+      "Security.framework",
+      "SystemConfiguration.framework",
+      "UniformTypeIdentifiers.framework",
+    ]
+    if (target_platform == "iphoneos") {
+      frameworks += [ "CoreTelephony.framework" ]
+    }
+  }
 }
 
 component("net") {
@@ -1134,6 +1183,7 @@ component("net") {
   }
 
   deps = [
+    ":net_apple",
     ":cronet_buildflags",
     ":net_deps",
     "//components/miracle_parameter/common",
@@ -1356,24 +1406,7 @@ component("net") {
   }
 
   if (is_apple) {
-    sources += [
-      "base/apple/guarded_fd.h",
-      "base/apple/http_response_headers_util.h",
-      "base/apple/http_response_headers_util.mm",
-      "base/apple/url_conversions.h",
-      "base/apple/url_conversions.mm",
-      "base/network_change_notifier_apple.h",
-      "base/network_change_notifier_apple.mm",
-      "base/network_config_watcher_apple.cc",
-      "base/network_config_watcher_apple.h",
-      "base/platform_mime_util_apple.mm",
-      "cert/x509_util_apple.cc",
-      "cert/x509_util_apple.h",
-      "proxy_resolution/proxy_chain_util_apple.cc",
-      "proxy_resolution/proxy_chain_util_apple.h",
-      "proxy_resolution/proxy_resolver_apple.cc",
-      "proxy_resolution/proxy_resolver_apple.h",
-    ]
+    sources += []
   }
 
   if (is_win) {
@@ -1794,6 +1827,7 @@ source_set("net_deps") {
     "//net/dns/public",
     "//net/http:transport_security_state_generated_files",
     "//net/third_party/quiche",
+    "//net:net_apple",
   ]
 
   public_deps = [
@@ -1869,6 +1903,7 @@ source_set("net_public_deps") {
     "//net/dns/public",
     "//net/http:transport_security_state_generated_files",
     "//net/third_party/quiche",
+    "//net:net_apple",
   ]
 
   public_deps = [

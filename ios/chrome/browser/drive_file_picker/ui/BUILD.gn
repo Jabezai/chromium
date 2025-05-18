@@ -2,6 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+config("suppress_deprecations") {
+  cflags = [ "-Wno-deprecated-declarations" ]
+}
+
 source_set("ui") {
   sources = [
     "drive_file_picker_cell_content_configuration.h",
@@ -18,6 +22,7 @@ source_set("ui") {
     "drive_file_picker_table_view_controller.mm",
     "drive_file_picker_table_view_controller_delegate.h",
   ]
+  configs += [ ":suppress_deprecations" ]
   deps = [
     ":alert_utils",
     ":constants",

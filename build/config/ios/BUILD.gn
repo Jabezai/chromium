@@ -59,7 +59,7 @@ config("compiler") {
   # This is here so that all files get recompiled after an Xcode update.
   # (defines are passed via the command line, and build system rebuild things
   # when their commandline changes). Nothing should ever read this define.
-  defines = [ "CR_XCODE_VERSION=$xcode_version" ]
+  defines = [ "CR_XCODE_VERSION=$ios_xcode_version" ]
 
   asmflags = common_flags
   cflags = common_flags
@@ -301,7 +301,7 @@ action("xctest_runner_without_arm64e") {
     "--input",
     rebase_path(sources[0], root_build_dir),
     "--xcode-version",
-    xcode_version,
+    ios_xcode_version,
   ]
 
   # When running under ASan, the ASan runtime library must be packaged alongside

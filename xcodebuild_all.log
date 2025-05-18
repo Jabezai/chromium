@@ -1,0 +1,14 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project /Volumes/MD/chromium/src/out/build/all.xcodeproj -scheme chrome -configuration Debug -destination platform=iOS,name=iPhone -allowProvisioningUpdates build
+
+User defaults from command line:
+    IDEPackageSupportUseBuiltinSCM = YES
+
+2025-05-16 22:34:40.336 xcodebuild[21406:8689409] Error Domain=NSCocoaErrorDomain Code=3840 "JSON text did not start with array or object and option to allow fragments not set. around line 1, column 0." UserInfo={NSDebugDescription=JSON text did not start with array or object and option to allow fragments not set. around line 1, column 0., NSJSONSerializationErrorIndex=0}
+2025-05-16 22:34:40.350 xcodebuild[21406:8689409] Writing error result bundle to /var/folders/5m/0hwytxr57qggtvddsw3jb6100000gn/T/ResultBundle_2025-16-05_22-34-0040.xcresult
+xcodebuild: error: Unable to read project 'all.xcodeproj' from folder '/Volumes/MD/chromium/src/out/build'.
+	Reason: The project ‘all’ is damaged and cannot be opened due to a parse error. Examine the project file for invalid edits or unresolved source control conflicts.
+
+Path: /Volumes/MD/chromium/src/out/build/all.xcodeproj
+
+

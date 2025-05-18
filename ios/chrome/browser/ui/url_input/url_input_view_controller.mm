@@ -3,16 +3,16 @@
 // found in the LICENSE file.
 
 #import "ios/chrome/browser/ui/url_input/url_input_view_controller.h"
-
 #import "ios/chrome/browser/omnibox/ui_bundled/omnibox_text_field_ios.h"
 #import "ios/chrome/browser/ui/url_input/slide_transition_animator.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
 
-@interface URLInputViewController () <UIViewControllerTransitioningDelegate>
+@interface URLInputViewController () <UIViewControllerTransitioningDelegate, UIGestureRecognizerDelegate>
 @property(nonatomic, strong) OmniboxTextFieldIOS* urlField; // Store URL field for notification
 @property(nonatomic, strong) UITapGestureRecognizer* primaryTap; // Store for cleanup
 @property(nonatomic, strong) UITapGestureRecognizer* secondaryTap; // Store for cleanup
 @property(nonatomic, strong) UITapGestureRecognizer* urlTap; // Tap to force focus
+@property(nonatomic, strong) UISwipeGestureRecognizer* swipeGesture; // Swipe to detect menu interaction
 @end
 
 @implementation URLInputViewController
@@ -22,6 +22,7 @@
 @synthesize primaryTap = _primaryTap;
 @synthesize secondaryTap = _secondaryTap;
 @synthesize urlTap = _urlTap;
+@synthesize swipeGesture = _swipeGesture;
 
 - (void)viewDidLoad {
   [super viewDidLoad];
@@ -57,6 +58,14 @@
   self.secondaryTap.delegate = self;
   self.secondaryTap.cancelsTouchesInView = NO; // Allow toolbar actions
   [secondaryToolbar addGestureRecognizer:self.secondaryTap];
+
+  // Add swipe gesture recognizer to handle right-to-left and left-to-right swipes
+  self.swipeGesture = [[UISwipeGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(handleSwipe:)];
+  self.swipeGesture.delegate = self;
+  self.swipeGesture.direction = UISwipeGestureRecognizerDirectionLeft | UISwipeGestureRecognizerDirectionRight;
+  [self.view addGestureRecognizer:self.swipeGesture];
 
   // Configure the URL input field
   self.urlField = (OmniboxTextFieldIOS*)[self findURLTextFieldInView:primaryToolbar];
@@ -123,6 +132,10 @@
     [self.urlTap.view removeGestureRecognizer:self.urlTap];
     self.urlTap = nil;
   }
+  if (self.swipeGesture && self.swipeGesture.view) {
+    [self.swipeGesture.view removeGestureRecognizer:self.swipeGesture];
+    self.swipeGesture = nil;
+  }
   // Resign first responder
   if (self.urlField) {
     [self.urlField resignFirstResponder];
@@ -145,7 +158,21 @@
 }
 
 - (void)dismissMenu:(UITapGestureRecognizer*)gesture {
-  NSLog(@"Dismissing swipe menu due to tap on view: %@", gesture.view);
+  NSLog(@"Dismissing swipe menu due to tap on view: %@, omnibox focused: %d", gesture.view, [self.urlField isFirstResponder]);
+  if ([self.urlField isFirstResponder]) {
+    NSLog(@"Blocking tap dismissal because omnibox is focused");
+    return; // Prevent dismissal while typing
+  }
+  [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)handleSwipe:(UISwipeGestureRecognizer*)gesture {
+  NSLog(@"Swipe detected, direction: %ld, omnibox focused: %d", (long)gesture.direction, [self.urlField isFirstResponder]);
+  if ([self.urlField isFirstResponder]) {
+    NSLog(@"Blocking swipe dismissal because omnibox is focused");
+    return; // Prevent dismissal while typing
+  }
+  // Allow swipe to dismiss if omnibox is not focused
   [self dismissViewControllerAnimated:YES completion:nil];
 }
 
@@ -192,12 +219,14 @@
                                                                     sourceController:(UIViewController*)source {
   SlideTransitionAnimator* animator = [[SlideTransitionAnimator alloc] init];
   animator.presenting = YES;
+  NSLog(@"Presenting URLInputViewController with slide animation");
   return animator;
 }
 
 - (id<UIViewControllerAnimatedTransitioning>)animationControllerForDismissedController:(UIViewController*)dismissed {
   SlideTransitionAnimator* animator = [[SlideTransitionAnimator alloc] init];
   animator.presenting = NO;
+  NSLog(@"Dismissing URLInputViewController with slide animation");
   return animator;
 }
 
@@ -205,16 +234,21 @@
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)gestureRecognizer
     shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer*)otherGestureRecognizer {
-  NSLog(@"Gesture recognizer: %@, other: %@", gestureRecognizer, otherGestureRecognizer);
-  // Prevent simultaneous recognition with text field gestures
-  if ([otherGestureRecognizer.view isKindOfClass:[UITextField class]]) {
+  NSLog(@"Gesture recognizer: %@, other: %@, omnibox focused: %d", gestureRecognizer, otherGestureRecognizer, [self.urlField isFirstResponder]);
+  // Prevent simultaneous recognition with text field gestures or when omnibox is focused
+  if ([otherGestureRecognizer.view isKindOfClass:[UITextField class]] || [self.urlField isFirstResponder]) {
     return NO;
   }
   return YES;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer*)gestureRecognizer {
-  // Prevent dismissal if the tap is on the URL input field, its subviews, or omnibox container
+  // Prevent dismissal if the omnibox is focused
+  if ([self.urlField isFirstResponder]) {
+    NSLog(@"Gesture blocked because omnibox is focused: %@", gestureRecognizer);
+    return NO;
+  }
+  // Prevent dismissal if the tap or swipe is on the URL input field, its subviews, or omnibox container
   CGPoint location = [gestureRecognizer locationInView:gestureRecognizer.view];
   UIView* hitView = [gestureRecognizer.view hitTest:location withEvent:nil];
   UIView* currentView = hitView;
@@ -222,12 +256,12 @@
     NSString* viewClass = NSStringFromClass([currentView class]);
     if ([viewClass isEqualToString:@"OmniboxTextFieldIOS"] ||
         [viewClass isEqualToString:@"LocationBarSteadyView"]) {
-      NSLog(@"Tap on omnibox view (%@), not dismissing: %@", viewClass, hitView);
+      NSLog(@"Tap or swipe on omnibox view (%@), not dismissing: %@", viewClass, hitView);
       return NO;
     }
     currentView = currentView.superview;
   }
-  NSLog(@"Tap on non-omnibox view, dismissing: %@", hitView);
+  NSLog(@"Tap or swipe on non-omnibox view, allowing: %@, gesture: %@", hitView, gestureRecognizer);
   return YES;
 }
 

@@ -19,6 +19,7 @@
 
   if (self.presenting) {
     // Slide from right to left
+    NSLog(@"Presenting view controller: %@, from: %@", toViewController, fromViewController);
     toViewController.view.frame = CGRectOffset(containerView.bounds, containerView.bounds.size.width, 0);
     [containerView addSubview:toViewController.view];
     [UIView animateWithDuration:[self transitionDuration:transitionContext]
@@ -27,10 +28,12 @@
                        fromViewController.view.frame = CGRectOffset(containerView.bounds, -containerView.bounds.size.width / 2, 0);
                      }
                      completion:^(BOOL finished) {
+                       NSLog(@"Presentation animation completed: %d", finished);
                        [transitionContext completeTransition:finished];
                      }];
   } else {
     // Slide back to right
+    NSLog(@"Dismissing view controller: %@, to: %@", fromViewController, toViewController);
     [UIView animateWithDuration:[self transitionDuration:transitionContext]
                      animations:^{
                        fromViewController.view.frame = CGRectOffset(containerView.bounds, containerView.bounds.size.width, 0);
@@ -38,6 +41,7 @@
                      }
                      completion:^(BOOL finished) {
                        [fromViewController.view removeFromSuperview];
+                       NSLog(@"Dismissal animation completed: %d", finished);
                        [transitionContext completeTransition:finished];
                      }];
   }

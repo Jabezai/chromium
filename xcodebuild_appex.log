@@ -1,0 +1,75 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project out/build/all.xcodeproj -scheme appex -configuration Debug -destination platform=iOS,name=iPhone -allowProvisioningUpdates build
+
+User defaults from command line:
+    IDEPackageSupportUseBuiltinSCM = YES
+
+Prepare packages
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'appex' in project 'all' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk -x c -c /dev/null
+
+Build description signature: d40d1bcd0320c4a4175c85cb5718968c
+Build description path: /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/XCBuildData/d40d1bcd0320c4a4175c85cb5718968c.xcbuilddata
+CreateBuildDirectory /Volumes/MD/chromium/src/out/Debug-iphoneos/ios_clang_arm64_app_ext
+    cd /Volumes/MD/chromium/src/out/build/all.xcodeproj
+    builtin-create-build-directory /Volumes/MD/chromium/src/out/Debug-iphoneos/ios_clang_arm64_app_ext
+
+note: Run script build phase 'Action "Compile and copy appex via ninja"' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'appex' from project 'all')
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension.hmap (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension.hmap
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension.DependencyMetadataFileList (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-project-headers.hmap (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-project-headers.hmap
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-own-target-headers.hmap (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-generated-files.hmap (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-generated-files.hmap
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-all-target-headers.hmap (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-all-non-framework-target-headers.hmap (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/intents_extension-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/Script-87E71EDF0B3D7139E634A232.sh (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    write-file /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/Script-87E71EDF0B3D7139E634A232.sh
+
+MkDir /Volumes/MD/chromium/src/out/Debug-iphoneos/ios_clang_arm64_app_ext/intents_extension.appex (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    /bin/mkdir -p /Volumes/MD/chromium/src/out/Debug-iphoneos/ios_clang_arm64_app_ext/intents_extension.appex
+
+PhaseScriptExecution Action\ \"Compile\ and\ copy\ appex\ via\ ninja\" /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/Script-87E71EDF0B3D7139E634A232.sh (in target 'appex' from project 'all')
+    cd /Volumes/MD/chromium/src/out/build
+    /bin/sh -c /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/Script-87E71EDF0B3D7139E634A232.sh
+ninja: Entering directory `../Debug-iphoneos'
+ninja: error: unknown target 'ios/chrome/intents_extension/appex:appex'
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	PhaseScriptExecution Action\ \"Compile\ and\ copy\ appex\ via\ ninja\" /Users/charles/Library/Developer/Xcode/DerivedData/all-anturhqzjsvqcucxxmovgxfvuamz/Build/Intermediates.noindex/all.build/Debug-iphoneos/appex.build/Script-87E71EDF0B3D7139E634A232.sh (in target 'appex' from project 'all')
+	Building project all with scheme appex and configuration Debug
+(2 failures)

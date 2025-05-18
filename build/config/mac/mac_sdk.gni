@@ -39,7 +39,7 @@ declare_args() {
   # Path to a specific version of the Mac SDK, not including a slash at the end.
   # If empty, the path to the lowest version greater than or equal to
   # `mac_sdk_min` is used.
-  mac_sdk_path = ""
+  mac_sdk_path = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.4.sdk"
 
   # The SDK name as accepted by `xcodebuild`.
   mac_sdk_name = "macosx"
@@ -49,7 +49,7 @@ declare_args() {
   # will fail.
   mac_sdk_official_version = "15.4"
 
-  # The SDK build version used when making official builds.  This is a single
+  # The SDK build version used when making official builds. This is a single
   # exact version found at "System/Library/CoreServices/SystemVersion.plist"
   # inside the SDK.
   mac_sdk_official_build_version = "24E241"
@@ -58,6 +58,10 @@ declare_args() {
   # builds with system Xcode to test new SDKs, set this.
   # Don't set this on any bots.
   mac_allow_system_xcode_for_official_builds_for_testing = false
+
+  # Xcode version and build for the current setup.
+  mac_xcode_version = "1630"  # Xcode 16.3
+  mac_xcode_build = "16E140"  # Xcode 16.3 build
 }
 
 # Check that the version of macOS SDK used is the one requested when building
@@ -91,7 +95,7 @@ if (!use_system_xcode) {
   ]
 }
 
-# Building crashpard requires some files that are part of the macOS SDK
+# Building crashpad requires some files that are part of the macOS SDK
 # (and shipped inside Xcode.app) into the application. When using the
 # system installation of Xcode, those files are outside of the checkout.
 # Using absolute path works with gn, however the distributed build system
