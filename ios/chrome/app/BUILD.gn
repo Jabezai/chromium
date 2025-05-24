@@ -237,30 +237,28 @@ compile_entitlements("entitlements") {
   output_name = "$target_gen_dir/$chromium_short_name.entitlements"
 }
 
-if (ios_enable_credential_provider_extension) {
-  source_set("credential_provider_migrator_app_agent") {
-    sources = [
-      "credential_provider_migrator_app_agent.h",
-      "credential_provider_migrator_app_agent.mm",
-    ]
-    deps = [
-      "//components/webauthn/core/browser:passkey_model",
-      "//ios/chrome/app/application_delegate:app_state",
-      "//ios/chrome/app/application_delegate:observing_app_state_agent",
-      "//ios/chrome/app/profile",
-      "//ios/chrome/browser/credential_provider/model",
-      "//ios/chrome/browser/passwords/model:store_factory",
-      "//ios/chrome/browser/shared/coordinator/scene:scene_state_header",
-      "//ios/chrome/browser/shared/model/application_context",
-      "//ios/chrome/browser/shared/model/profile",
-      "//ios/chrome/browser/shared/model/profile:features",
-      "//ios/chrome/browser/sync/model",
-      "//ios/chrome/browser/webauthn/model",
-      "//ios/chrome/common/app_group",
-      "//ios/chrome/common/credential_provider",
-    ]
-  }
-}
+#source_set("credential_provider_migrator_app_agent") {
+#  sources = [
+#    "credential_provider_migrator_app_agent.h",
+#    "credential_provider_migrator_app_agent.mm",
+#  ]
+#  deps = [
+#    "//components/webauthn/core/browser:passkey_model",
+#    "//ios/chrome/app/application_delegate:app_state",
+#    "//ios/chrome/app/application_delegate:observing_app_state_agent",
+#    "//ios/chrome/app/profile",
+#    "//ios/chrome/browser/credential_provider/model",
+#    "//ios/chrome/browser/passwords/model:store_factory",
+#    "//ios/chrome/browser/shared/coordinator/scene:scene_state_header",
+#    "//ios/chrome/browser/shared/model/application_context",
+#    "//ios/chrome/browser/shared/model/profile",
+#    "//ios/chrome/browser/shared/model/profile:features",
+#    "//ios/chrome/browser/sync/model",
+#    "//ios/chrome/browser/webauthn/model",
+#    "//ios/chrome/common/app_group",
+#    "//ios/chrome/common/credential_provider",
+#  ]
+#}
 
 source_set("app_metrics_app_state_agent") {
   sources = [
@@ -552,17 +550,6 @@ source_set("app_internal") {
     deps += [ "//ios/chrome/browser/default_browser/model/default_status" ]
   }
 
-  if (ios_enable_credential_provider_extension) {
-    deps += [ ":credential_provider_migrator_app_agent" ]
-  }
-
-  if (enable_rlz) {
-    deps += [
-      "//components/rlz",
-      "//ios/chrome/browser/rlz",
-    ]
-  }
-
   frameworks = [ "MediaPlayer.framework" ]
 
   allow_circular_includes_from =
@@ -710,7 +697,7 @@ chrome_app("chrome") {
 
   entitlements_target = ":entitlements"
   info_plist_target = ":info_plist"
-  bundle_identifier = "$ios_chromium_bundle_id"
+  bundle_identifier = ios_chromium_bundle_id
   if (ios_chrome_orderfile != "") {
     orderfile_path = ios_chrome_orderfile
   }
@@ -730,14 +717,6 @@ chrome_app("chrome") {
       _variants += [
         {
           forward_variables_from(_variant, "*", [ "cpe_bundle_deps" ])
-          if (ios_enable_credential_provider_extension) {
-            if (!defined(bundle_deps)) {
-              bundle_deps = []
-            }
-            bundle_deps += [
-              ":credential_provider_extension_bundle_variants_${_variant.name}",
-            ]
-          }
         },
       ]
     }
@@ -761,38 +740,33 @@ chrome_app("chrome") {
     deps += [ ":tests_fake_hook" ]
   }
 
-  if (current_toolchain == default_toolchain) {
-    if (ios_enable_search_widget_extension) {
-      bundle_deps += [ ":search_widget_extension_bundle" ]
-    }
-    if (ios_enable_content_widget_extension) {
-      bundle_deps += [ ":content_widget_extension_bundle" ]
-    }
-    if (ios_enable_share_extension) {
-      bundle_deps += [ ":share_extension_bundle" ]
-    }
-    if (ios_enable_open_extension) {
-      bundle_deps += [ ":open_extension_bundle" ]
-    }
-    if (ios_enable_credential_provider_extension) {
-      if (!is_chrome_branded || ios_chrome_app_variants == []) {
-        bundle_deps += [ ":credential_provider_extension_bundle" ]
-      }
-    }
-    if (ios_enable_widget_kit_extension) {
-      bundle_deps += [ ":widget_kit_extension_bundle" ]
-    }
-    if (ios_enable_intents_extension) {
-      bundle_deps += [ ":intents_extension_bundle" ]
-    }
-    if (ios_enable_push_notification_service_extension) {
-      bundle_deps += [ ":push_notification_service_extension_bundle" ]
-    }
-  }
+  #if (current_toolchain == default_toolchain) {
+  #  if (ios_enable_intents_extension) {
+  #    bundle_deps += [ ":intents_extension_bundle" ]
+  #  }
+  #  if (ios_enable_share_extension) {
+  #    bundle_deps += [ ":share_extension_bundle" ]
+  #  }
+  #  if (ios_enable_push_notification_service_extension) {
+  #    bundle_deps += [ ":push_notification_service_extension_bundle" ]
+  #  }
+  #  if (ios_enable_open_extension) {
+  #    bundle_deps += [ ":open_extension_bundle" ]
+  #  }
+  #  if (ios_enable_widget_kit_extension) {
+  #    bundle_deps += [ ":widget_kit_extension_bundle" ]
+  #  }
+  #  if (ios_enable_search_widget_extension) {
+  #    bundle_deps += [ ":search_widget_extension_bundle" ]
+  #  }
+  #  if (ios_enable_content_widget_extension) {
+  #    bundle_deps += [ ":content_widget_extension_bundle" ]
+  #  }
+  #}
 
   extra_substitutions = [
-    "CONTENT_WIDGET_EXTENSION_BUNDLE_ID=$ios_chromium_bundle_id.ContentTodayExtension",
-    "CHROMIUM_BUNDLE_ID=$ios_chromium_bundle_id",
+    "CONTENT_WIDGET_EXTENSION_BUNDLE_ID=com.charleslee.chromium.ContentTodayExtension",
+    "CHROMIUM_BUNDLE_ID=com.charleslee.chromium",
     "CHROMIUM_HANDOFF_ID=$chromium_handoff_id",
     "CHROMIUM_SHORT_NAME=$chromium_short_name",
     "CHROMIUM_URL_SCHEME_1=$url_unsecure_scheme",
@@ -835,71 +809,58 @@ chrome_app("chrome") {
   }
 }
 
-if (current_toolchain == default_toolchain && !ios_chrome_generate_order_file) {
-  _extension_toolchain = "${current_toolchain}_app_ext"
-  if (ios_enable_search_widget_extension) {
-    extension_bundle_data("search_widget_extension_bundle") {
-      extension_name = "search_widget_extension.appex"
-      extension_target = "//ios/chrome/search_widget_extension/appex(${_extension_toolchain}_13_4)"
-    }
-  }
+# Define _extension_toolchain only if any extension is enabled
+#if (ios_enable_intents_extension || ios_enable_credential_provider_extension ||
+#    ios_enable_share_extension || ios_enable_push_notification_service_extension ||
+#    ios_enable_open_extension || ios_enable_widget_kit_extension ||
+#    ios_enable_search_widget_extension || ios_enable_content_widget_extension) {
+#  _extension_toolchain = "${current_toolchain}_app_ext"
+#}
 
-  if (ios_enable_content_widget_extension) {
-    extension_bundle_data("content_widget_extension_bundle") {
-      extension_name = "content_widget_extension.appex"
-      extension_target = "//ios/chrome/content_widget_extension/appex(${_extension_toolchain}_13_4)"
-    }
-  }
-
-  if (ios_enable_share_extension) {
-    extension_bundle_data("share_extension_bundle") {
-      extension_name = "share_extension.appex"
-      extension_target =
-          "//ios/chrome/share_extension/appex(${_extension_toolchain})"
-    }
-  }
-
-  if (ios_enable_open_extension) {
-    extension_bundle_data("open_extension_bundle") {
-      extension_name = "open_extension.appex"
-      extension_target =
-          "//ios/chrome/open_extension/appex(${_extension_toolchain})"
-    }
-  }
-
-  if (ios_enable_credential_provider_extension) {
-    extension_bundle_data("credential_provider_extension_bundle") {
-      extension_name = "credential_provider_extension.appex"
-      extension_target = "//ios/chrome/credential_provider_extension/appex(${_extension_toolchain})"
-      if (is_chrome_branded && ios_chrome_app_variants != []) {
-        variants = ios_chrome_app_variants
-      }
-    }
-  }
-
-  if (ios_enable_widget_kit_extension) {
-    extension_bundle_data("widget_kit_extension_bundle") {
-      extension_name = "widget_kit_extension.appex"
-      extension_target =
-          "//ios/chrome/widget_kit_extension/appex(${_extension_toolchain})"
-    }
-  }
-
-  if (ios_enable_intents_extension) {
-    extension_bundle_data("intents_extension_bundle") {
-      extension_name = "intents_extension.appex"
-      extension_target =
-          "//ios/chrome/intents_extension/appex(${_extension_toolchain})"
-    }
-  }
-
-  if (ios_enable_push_notification_service_extension) {
-    extension_bundle_data("push_notification_service_extension_bundle") {
-      extension_name = "push_notification_service_extension.appex"
-      extension_target = "//ios/chrome/push_notification_service_extension/appex(${_extension_toolchain})"
-    }
-  }
-}
+#if (current_toolchain == default_toolchain && !ios_chrome_generate_order_file) {
+#  if (ios_enable_intents_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("intents_extension_bundle") {
+#      extension_name = "intents_extension.appex"
+#      extension_target = "//ios/chrome/intents_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#  if (ios_enable_share_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("share_extension_bundle") {
+#      extension_name = "share_extension.appex"
+#      extension_target = "//ios/chrome/share_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#  if (ios_enable_push_notification_service_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("push_notification_service_extension_bundle") {
+#      extension_name = "push_notification_service_extension.appex"
+#      extension_target = "//ios/chrome/push_notification_service_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#  if (ios_enable_open_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("open_extension_bundle") {
+#      extension_name = "open_extension.appex"
+#      extension_target = "//ios/chrome/open_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#  if (ios_enable_widget_kit_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("widget_kit_extension_bundle") {
+#      extension_name = "widget_kit_extension.appex"
+#      extension_target = "//ios/chrome/widget_kit_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#  if (ios_enable_search_widget_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("search_widget_extension_bundle") {
+#      extension_name = "search_widget_extension.appex"
+#      extension_target = "//ios/chrome/search_widget_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#  if (ios_enable_content_widget_extension && defined(_extension_toolchain)) {
+#    extension_bundle_data("content_widget_extension_bundle") {
+#      extension_name = "content_widget_extension.appex"
+#      extension_target = "//ios/chrome/content_widget_extension/appex(${_extension_toolchain})"
+#    }
+#  }
+#}
 
 source_set("constants") {
   sources = [
