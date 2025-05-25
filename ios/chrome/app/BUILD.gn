@@ -674,6 +674,15 @@ if (ios_chrome_privacy_manifest != "") {
   }
 }
 
+bundle_data("chrome_resources") {
+  sources = [
+    "app/resources/WFVisualSans-RegularText.ttf",
+  ]
+  outputs = [
+    "{{bundle_resources_dir}}/ios/chrome/app/resources/{{source_file_part}}",
+  ]
+}
+
 source_set("multitasking_test_app_delegate") {
   sources = [
     "multitasking_test_application_delegate.h",
@@ -718,6 +727,7 @@ chrome_app("chrome") {
   bundle_deps = [
     "//ios/chrome/app/resources",
     "//ios/chrome/app/resources:settings_resources",
+    ":chrome_resources",
   ]
   if (!is_chrome_branded || ios_chrome_app_variants == []) {
     assert(ios_application_icons_target != "",

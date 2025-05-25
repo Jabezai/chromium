@@ -7,6 +7,7 @@
 #import "ios/chrome/browser/omnibox/ui_bundled/omnibox_text_field_ios.h"
 #import "ios/chrome/browser/ui/url_input/slide_transition_animator.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
+#import <CoreText/CoreText.h> // Added for font registration
 
 @interface URLInputViewController () <UIViewControllerTransitioningDelegate>
 @property(nonatomic, strong) OmniboxTextFieldIOS* urlField; // Store URL field for notification
@@ -23,9 +24,32 @@
 @synthesize secondaryTap = _secondaryTap;
 @synthesize urlTap = _urlTap;
 
+// Register the custom WF Visual Sans font
+- (BOOL)registerCustomFont {
+  NSString* fontPath = [[NSBundle mainBundle] pathForResource:@"WFVisualSans-RegularText" ofType:@"ttf" inDirectory:@"ios/chrome/app/resources"];
+  if (!fontPath) {
+    NSLog(@"Error: WFVisualSans-RegularText.ttf not found in bundle at ios/chrome/app/resources");
+    return NO;
+  }
+
+  NSURL* fontURL = [NSURL fileURLWithPath:fontPath];
+  CFErrorRef error;
+  BOOL success = CTFontManagerRegisterFontsForURL((__bridge CFURLRef)fontURL, kCTFontManagerScopeProcess, &error);
+  if (!success) {
+    NSError* nsError = (__bridge NSError*)error;
+    NSLog(@"Error registering WF Visual Sans font: %@", nsError.localizedDescription);
+    return NO;
+  }
+  NSLog(@"Successfully registered WF Visual Sans font");
+  return YES;
+}
+
 - (void)viewDidLoad {
   [super viewDidLoad];
   self.view.backgroundColor = [UIColor colorNamed:kBackgroundColor];
+
+  // Register the custom font
+  [self registerCustomFont];
 
   // Add primary toolbar (top status bar) as a child view controller
   UIViewController* primaryToolbarVC = self.toolbarCoordinator.primaryToolbarViewController;
@@ -66,6 +90,19 @@
     self.urlField.returnKeyType = UIReturnKeyGo;
     // Exit pre-edit state to prevent clearsOnInsertion
     [self.urlField exitPreEditState];
+    // Apply WF Visual Sans font
+    UIFont* customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:17.0];
+    if (!customFont) {
+      NSLog(@"Warning: WF Visual Sans font not available, falling back to system font");
+      for (NSString* family in [UIFont familyNames]) {
+        NSLog(@"Font family: %@", family);
+        for (NSString* name in [UIFont fontNamesForFamilyName:family]) {
+          NSLog(@"  Font name: %@", name);
+        }
+      }
+      customFont = [UIFont systemFontOfSize:17.0];
+    }
+    self.urlField.font = customFont;
     // Add control event to verify focus
     [self.urlField addTarget:self
                       action:@selector(handleEditingDidBegin:)
@@ -76,7 +113,7 @@
                 action:@selector(focusURLField:)];
     self.urlTap.delegate = self;
     [self.urlField addGestureRecognizer:self.urlTap];
-    NSLog(@"URL input field configured: %@, editable: %d, can become first responder: %d, delegate: %@, preEditing: %d", self.urlField, self.urlField.isEnabled, [self.urlField canBecomeFirstResponder], self.urlField.delegate, self.urlField.isPreEditing);
+    NSLog(@"URL input field configured: %@, editable: %d, can become first responder: %d, delegate: %@, preEditing: %d, font: %@", self.urlField, self.urlField.isEnabled, [self.urlField canBecomeFirstResponder], self.urlField.delegate, self.urlField.isPreEditing, self.urlField.font.fontName);
     [self.urlField becomeFirstResponder]; // Ensure field is focused
     NSLog(@"URL field first responder after focus: %d", [self.urlField isFirstResponder]);
     // Add notification observer for text field editing end
