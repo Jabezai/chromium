@@ -1,0 +1,14 @@
+source_set("font") {
+  sources = [
+    "FontManager.h",
+    "FontManager.mm",
+  ]
+  deps = [
+    "//base",
+    "//ui/base",
+  ]
+  frameworks = [
+    "CoreText.framework",
+    "UIKit.framework",
+  ]
+}

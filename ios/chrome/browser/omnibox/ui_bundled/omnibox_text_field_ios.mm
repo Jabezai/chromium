@@ -1,8 +1,5 @@
-// Copyright 2012 The Chromium Authors
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 #import "ios/chrome/browser/omnibox/ui_bundled/omnibox_text_field_ios.h"
+#import "ios/chrome/browser/ui/font/FontManager.h"
 
 #import <CoreText/CoreText.h>
 
@@ -17,7 +14,6 @@
 #import "components/open_from_clipboard/clipboard_async_wrapper_ios.h"
 #import "ios/chrome/browser/autocomplete/model/autocomplete_scheme_classifier_impl.h"
 #import "ios/chrome/browser/omnibox/public/omnibox_ui_features.h"
-#import "ios/chrome/browser/omnibox/public/omnibox_util.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/public/features/system_flags.h"
 #import "ios/chrome/browser/shared/ui/util/animation_util.h"
@@ -145,15 +141,6 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
           registerForTraitChanges:(traits)
                        withAction:@selector(updateTextProperitesOnTraitChange)];
     }
-
-    // Temporarily disable OmniboxKeyboardAccessoryView to resolve build error
-    // self.inputAccessoryView = [[OmniboxKeyboardAccessoryView alloc]
-    //     initWithButtons:@[@".", @".com", @"/"]
-    //            delegate:self
-    //         pasteTarget:self
-    //  templateURLService:nil
-    //           textField:self
-    //         helpHandler:nil];
   }
   return self;
 }
@@ -424,7 +411,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
                       range:entireString];
 
   // When editing, use the default text color for all text, except the
-  // additionnal text.
+  // additional text.
   if (self.editing) {
     NSRange foregroundColorRange = entireString;
     if ([self hasAdditionalText]) {
@@ -436,7 +423,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
                         range:foregroundColorRange];
   } else {
     NSMutableParagraphStyle* style = [[NSMutableParagraphStyle alloc] init];
-    // URLs have their text direction set to to LTR (avoids RTL characters
+    // URLs have their text direction set to LTR (avoids RTL characters
     // making the URL render from right to left, as per the URL rendering
     // standard described here: https://url.spec.whatwg.org/#url-rendering
     [style setBaseWritingDirection:NSWritingDirectionLeftToRight];
@@ -474,6 +461,16 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 - (void)setText:(NSString*)text {
   NSAttributedString* as = [[NSAttributedString alloc] initWithString:text];
   [self setTextInternal:as autocompleteLength:0];
+}
+
+- (void)setFont:(UIFont *)font {
+  [super setFont:font];
+  NSLog(@"OmniboxTextFieldIOS setFont called, new font: %@, previous font: %@", font.fontName, self.font.fontName);
+}
+
+- (void)layoutSubviews {
+  [super layoutSubviews];
+  NSLog(@"OmniboxTextFieldIOS layoutSubviews, font: %@", self.font.fontName);
 }
 
 - (CGRect)textRectForBounds:(CGRect)bounds {
@@ -618,7 +615,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
     return YES;
   }
 
-  // If selected text is les than the text length, show selectAll.
+  // If selected text is less than the text length, show selectAll.
   if ([self textInRange:self.selectedTextRange].length != self.text.length &&
       action == @selector(selectAll:)) {
     return YES;
@@ -657,7 +654,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 #pragma mark Copy/Paste
 
 // Overridden to allow for custom omnibox copy behavior.  This includes
-// preprending http:// to the copied URL if needed.
+// prepending http:// to the copied URL if needed.
 - (void)copy:(id)sender {
   id<OmniboxTextFieldDelegate> delegate = self.delegate;
 
@@ -912,7 +909,14 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 
 /// Font that should be used in current size class.
 - (UIFont*)currentFont {
-  return IsCompactWidth(self) ? self.normalFont : self.largerFont;
+  UIFont *customFont = [[FontManager sharedManager] customFont];
+  if (customFont) {
+    NSLog(@"Using WF Visual Sans for OmniboxTextFieldIOS, font: %@", customFont.fontName);
+    return customFont;
+  }
+  UIFont *systemFont = IsCompactWidth(self) ? self.normalFont : self.largerFont;
+  NSLog(@"Falling back to system font for OmniboxTextFieldIOS, font: %@", systemFont.fontName);
+  return systemFont;
 }
 
 #pragma mark Helpers
@@ -1089,6 +1093,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
   [self setFont:self.currentFont];
   // Reset the attributed text to apply the new font.
   [self setAttributedText:self.attributedText];
+  NSLog(@"OmniboxTextFieldIOS updateTextProperitesOnTraitChange, font: %@", self.font.fontName);
 }
 
 @end

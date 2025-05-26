@@ -69,6 +69,7 @@ source_set("omnibox_internal") {
     "zero_suggest_prefetch_helper.mm",
   ]
   deps = [
+    "//ios/chrome/browser/ui/font",
     ":omnibox_popup_shared",
     ":omnibox_util",
     "//components/open_from_clipboard",

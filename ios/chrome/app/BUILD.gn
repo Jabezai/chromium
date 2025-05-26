@@ -61,9 +61,12 @@ source_set("app") {
     "deferred_initialization_queue.mm",
     "deferred_initialization_runner.h",
     "deferred_initialization_runner.mm",
+    "UIViewController+CustomFont.h",
+    "UIViewController+CustomFont.mm",
   ]
 
   deps = [
+    "//ios/chrome/browser/ui/font",
     "//base",
     "//ios/chrome/app/startup:utils",
     "//ios/chrome/browser/shared/model/url:constants",
@@ -73,7 +76,7 @@ source_set("app") {
     "//url",
   ]
 
-  frameworks = [ "Foundation.framework" ]
+  frameworks = [ "Foundation.framework", "UIKit.framework" ]
 }
 
 source_set("app_trampoline") {
@@ -676,7 +679,7 @@ if (ios_chrome_privacy_manifest != "") {
 
 bundle_data("chrome_resources") {
   sources = [
-    "app/resources/WFVisualSans-RegularText.ttf",
+    "resources/MyCustomFont.ttf",
   ]
   outputs = [
     "{{bundle_resources_dir}}/ios/chrome/app/resources/{{source_file_part}}",

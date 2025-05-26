@@ -13,7 +13,9 @@ source_set("ios_chrome_ui") {
   ]
 
   deps = [
+    "//ios/chrome/browser/ui/font",
     "//base",
+    "//ios/chrome/app:app",
     "//ios/chrome/browser/omnibox/ui_bundled:model_interface",
     "//ios/chrome/browser/toolbar/ui_bundled:coordinator",
     "//ios/chrome/common/ui/colors",

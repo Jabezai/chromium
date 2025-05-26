@@ -16,6 +16,7 @@ import("//tools/grit/grit_rule.gni")
 
 group("resources") {
   public_deps = [
+    ":font_resources",
     ":launchscreen_xib",
     ":quick_action_icons",
     ":system_strings",
@@ -139,6 +140,11 @@ repack("repack_unscaled_resources") {
       "//ui/strings:auto_image_annotation_strings",
     ]
   }
+}
+
+bundle_data("font_resources") {
+  sources = [ "MyCustomFont.ttf" ]
+  outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
 }
 
 bundle_data_xcassets("chromium_icons") {
