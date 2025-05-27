@@ -81,6 +81,7 @@ source_set("app") {
 
 source_set("app_trampoline") {
   sources = [ "chrome_exe_main.mm" ]
+  deps = [ "//ios/chrome/browser/ui:ios_chrome_ui",    "//ios/chrome/browser/ui/font:font"  ]
 }
 
 source_set("unit_tests") {

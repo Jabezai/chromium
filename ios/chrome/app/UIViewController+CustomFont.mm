@@ -1,4 +1,9 @@
-#import "ios/chrome/browser/ui/font/FontManager.h"
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/app/UIViewController+CustomFont.h"
+#import "ios/chrome/browser/ui/font/FontSwizzler.h"
 #import <objc/runtime.h>
 
 @implementation UIViewController (CustomFont)
@@ -6,35 +11,20 @@
 + (void)load {
   static dispatch_once_t onceToken;
   dispatch_once(&onceToken, ^{
-    Class cls = [self class];
-    
-    SEL originalSelector = @selector(viewDidLoad);
-    SEL swizzledSelector = @selector(swizzled_viewDidLoad);
-    
-    Method originalMethod = class_getInstanceMethod(cls, originalSelector);
-    Method swizzledMethod = class_getInstanceMethod(cls, swizzledSelector);
-    
-    BOOL didAddMethod = class_addMethod(cls,
-                                        originalSelector,
-                                        method_getImplementation(swizzledMethod),
-                                        method_getTypeEncoding(swizzledMethod));
-    
-    if (didAddMethod) {
-      class_replaceMethod(cls,
-                         swizzledSelector,
-                         method_getImplementation(originalMethod),
-                         method_getTypeEncoding(originalMethod));
-    } else {
-      method_exchangeImplementations(originalMethod, swizzledMethod);
-    }
+    // Swizzle viewDidLoad to ensure font application
+    Method originalMethod = class_getInstanceMethod(self, @selector(viewDidLoad));
+    Method swizzledMethod = class_getInstanceMethod(self, @selector(wf_viewDidLoad));
+    method_exchangeImplementations(originalMethod, swizzledMethod);
   });
 }
 
-- (void)swizzled_viewDidLoad {
-  [self swizzled_viewDidLoad];
-  
-  NSLog(@"Swizzling viewDidLoad for %@, applying WF Visual Sans", NSStringFromClass([self class]));
-  [[FontManager sharedManager] applyCustomFontToTextElementsInView:self.view];
+- (void)wf_viewDidLoad {
+  // Call original viewDidLoad
+  [self wf_viewDidLoad];
+
+  // Initialize FontSwizzler to ensure global font swizzling
+  [FontSwizzler initializeFontSwizzling];
+  NSLog(@"Swizzling viewDidLoad for %@, ensuring WFVisualSans-RegularText", NSStringFromClass([self class]));
 }
 
 @end

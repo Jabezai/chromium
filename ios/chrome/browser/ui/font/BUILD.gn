@@ -1,10 +1,13 @@
 source_set("font") {
   sources = [
-    "FontManager.h",
-    "FontManager.mm",
+    "FontSwizzler.h",
+    "FontSwizzler.m",
+    "FontSwizzler+Swizzled.h",
+    "FontSwizzler+Swizzled.m",
   ]
   deps = [
     "//base",
+    "//ios/chrome/common:common",
     "//ui/base",
   ]
   frameworks = [

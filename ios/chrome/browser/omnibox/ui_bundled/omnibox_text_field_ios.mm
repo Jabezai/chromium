@@ -1,5 +1,8 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 #import "ios/chrome/browser/omnibox/ui_bundled/omnibox_text_field_ios.h"
-#import "ios/chrome/browser/ui/font/FontManager.h"
 
 #import <CoreText/CoreText.h>
 
@@ -140,6 +143,15 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
       [self
           registerForTraitChanges:(traits)
                        withAction:@selector(updateTextProperitesOnTraitChange)];
+    }
+
+    // Enforce WFVisualSans-RegularText
+    UIFont *customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:17.0];
+    if (customFont) {
+      self.font = customFont;
+      NSLog(@"OmniboxTextFieldIOS init set font to WFVisualSans-RegularText, size: 17.0");
+    } else {
+      NSLog(@"OmniboxTextFieldIOS init failed to set WFVisualSans-RegularText, using: %@", self.font.fontName);
     }
   }
   return self;
@@ -442,6 +454,15 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
   }
 
   [super setAttributedText:mutableText];
+
+  // Enforce WFVisualSans-RegularText
+  UIFont *customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:self.font.pointSize];
+  if (customFont) {
+    self.font = customFont;
+    NSLog(@"OmniboxTextFieldIOS setAttributedText set font to WFVisualSans-RegularText, size: %.1f", self.font.pointSize);
+  } else {
+    NSLog(@"OmniboxTextFieldIOS setAttributedText failed to set WFVisualSans-RegularText, using: %@", self.font.fontName);
+  }
 }
 
 - (void)setPlaceholder:(NSString*)placeholder {
@@ -464,8 +485,9 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 }
 
 - (void)setFont:(UIFont *)font {
+  NSLog(@"OmniboxTextFieldIOS setFont called, new font: %@, previous font: %@, caller: %@", 
+        font.fontName, self.font.fontName, [NSThread callStackSymbols]);
   [super setFont:font];
-  NSLog(@"OmniboxTextFieldIOS setFont called, new font: %@, previous font: %@", font.fontName, self.font.fontName);
 }
 
 - (void)layoutSubviews {
@@ -588,7 +610,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
   if ([self hasAutocompleteText]) {
     [self acceptAutocompleteText];
   }
-  if ([self hasAdditionalText]) {
+  if (self.hasAdditionalText) {
     [self handleUserInitiatedRemovalOfAdditionalText];
   }
   [super selectAll:sender];
@@ -894,29 +916,35 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 /// Font to use in regular x regular size class. If not set, the regular font is
 /// used instead.
 - (UIFont*)largerFont {
-  return PreferredFontForTextStyleWithMaxCategory(
+  UIFont *baseFont = PreferredFontForTextStyleWithMaxCategory(
       UIFontTextStyleBody, self.traitCollection.preferredContentSizeCategory,
       UIContentSizeCategoryAccessibilityExtraLarge);
+  UIFont *customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:baseFont.pointSize];
+  if (!customFont) {
+    NSLog(@"OmniboxTextFieldIOS largerFont failed to set WFVisualSans-RegularText, using: %@", baseFont.fontName);
+  }
+  return customFont ?: baseFont;
 }
 
 /// Font to use in Compact x Any and Any x Compact size class.
 - (UIFont*)normalFont {
-  return PreferredFontForTextStyleWithMaxCategory(
+  UIFont *baseFont = PreferredFontForTextStyleWithMaxCategory(
       UIFontTextStyleSubheadline,
       self.traitCollection.preferredContentSizeCategory,
       UIContentSizeCategoryAccessibilityExtraLarge);
+  UIFont *customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:baseFont.pointSize];
+  if (!customFont) {
+    NSLog(@"OmniboxTextFieldIOS normalFont failed to set WFVisualSans-RegularText, using: %@", baseFont.fontName);
+  }
+  return customFont ?: baseFont;
 }
 
 /// Font that should be used in current size class.
 - (UIFont*)currentFont {
-  UIFont *customFont = [[FontManager sharedManager] customFont];
-  if (customFont) {
-    NSLog(@"Using WF Visual Sans for OmniboxTextFieldIOS, font: %@", customFont.fontName);
-    return customFont;
-  }
-  UIFont *systemFont = IsCompactWidth(self) ? self.normalFont : self.largerFont;
-  NSLog(@"Falling back to system font for OmniboxTextFieldIOS, font: %@", systemFont.fontName);
-  return systemFont;
+  // Use WFVisualSans-RegularText with appropriate size
+  UIFont *font = IsCompactWidth(self) ? self.normalFont : self.largerFont;
+  NSLog(@"OmniboxTextFieldIOS currentFont, font: %@, size: %.1f", font.fontName, font.pointSize);
+  return font;
 }
 
 #pragma mark Helpers
@@ -984,6 +1012,7 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 /// `self.attributedAdditionalText`.
 - (void)setTextInternal:(NSAttributedString*)text
      autocompleteLength:(NSUInteger)autocompleteLength {
+  NSLog(@"OmniboxTextFieldIOS setTextInternal, current font before: %@", self.font.fontName);
   _autocompleteTextLength = autocompleteLength;
   // Extract substrings for the permanent text and the autocomplete text.  The
   // former needs to retain any text attributes from the original string.
@@ -1063,6 +1092,16 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
   // attributed string to -systemFontOfSize fixes part of the problem, but the
   // baseline changes so text is out of alignment.
   [self setFont:self.currentFont];
+
+  // Enforce WFVisualSans-RegularText
+  UIFont *customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:self.font.pointSize];
+  if (customFont) {
+    self.font = customFont;
+    NSLog(@"OmniboxTextFieldIOS setTextInternal set font to WFVisualSans-RegularText, size: %.1f", self.font.pointSize);
+  } else {
+    NSLog(@"OmniboxTextFieldIOS setTextInternal failed to set WFVisualSans-RegularText, using: %@", self.font.fontName);
+  }
+
   [self updateTextDirection];
 }
 
@@ -1089,11 +1128,17 @@ NSString* const kOmniboxFadeAnimationKey = @"OmniboxFadeAnimation";
 
 // Resets Omnibox's the font and attributed text when a UITrait is modified.
 - (void)updateTextProperitesOnTraitChange {
-  // Reset the fonts to the appropriate ones in this size class.
+  NSLog(@"OmniboxTextFieldIOS updateTextProperitesOnTraitChange, before font: %@", self.font.fontName);
   [self setFont:self.currentFont];
-  // Reset the attributed text to apply the new font.
   [self setAttributedText:self.attributedText];
-  NSLog(@"OmniboxTextFieldIOS updateTextProperitesOnTraitChange, font: %@", self.font.fontName);
+  // Enforce WFVisualSans-RegularText
+  UIFont *customFont = [UIFont fontWithName:@"WFVisualSans-RegularText" size:self.font.pointSize];
+  if (customFont) {
+    self.font = customFont;
+    NSLog(@"OmniboxTextFieldIOS updateTextProperitesOnTraitChange set font to WFVisualSans-RegularText, size: %.1f", self.font.pointSize);
+  } else {
+    NSLog(@"OmniboxTextFieldIOS updateTextProperitesOnTraitChange failed to set WFVisualSans-RegularText, using: %@", self.font.fontName);
+  }
 }
 
 @end
