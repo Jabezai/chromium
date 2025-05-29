@@ -28,6 +28,7 @@
 #import "ios/chrome/browser/toolbar/ui_bundled/public/toolbar_constants.h"
 #import "ios/chrome/browser/toolbar/ui_bundled/public/toolbar_utils.h"
 #import "ios/chrome/common/material_timing.h"
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
 #import "ios/chrome/common/ui/util/ui_util.h"
 #import "ui/base/device_form_factor.h"
 
@@ -176,6 +177,13 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
                   action:@selector(exitFullscreen)];
   [self.view.collapsedToolbarButton
       addGestureRecognizer:hoverGestureRecognizer];
+
+  // Initialize button tint colors
+  UIColor* tintColor = [UIColor colorNamed:@"toolbar_button_color"];
+  for (ToolbarButton* button in self.view.allButtons) {
+    button.tintColor = tintColor ?: [UIColor blackColor];
+    NSLog(@"AdaptiveToolbarViewController: Initialized button=%@ with tintColor=%@", button, button.tintColor);
+  }
 
   [self updateUIOnTraitChange:nil];
 
@@ -387,8 +395,6 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
 
 - (void)animateFullscreenWithAnimator:(FullscreenAnimator*)animator {
   CGFloat finalProgress = animator.finalProgress;
-  // Using the animator doesn't work as the animation doesn't trigger a relayout
-  // of the constraints (see crbug.com/978462, crbug.com/950994).
   [UIView animateWithDuration:animator.duration
                    animations:^{
                      [self updateForFullscreenProgress:finalProgress];
@@ -430,16 +436,12 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
 }
 
 - (void)setOverflowMenuBlueDot:(BOOL)hasBlueDot {
-  // Blue dot should also use the highlighted icon.
   self.view.toolsMenuButton.iphHighlighted = hasBlueDot;
-
   self.view.toolsMenuButton.hasBlueDot = hasBlueDot;
 }
 
 #pragma mark - Private
 
-// Updates `locationBarContainer` height and adjusts its corner radius for the
-// fullscreen `progress`
 - (void)updateLocationBarHeightForFullscreenProgress:(CGFloat)progress {
   const CGFloat expandedHeight =
       LocationBarHeight(self.traitCollection.preferredContentSizeCategory);
@@ -454,8 +456,6 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
   self.view.locationBarContainer.layer.cornerRadius = height / 2;
 }
 
-// Makes sure that the visibility of the progress bar is matching the one which
-// is expected.
 - (void)updateProgressBarVisibility {
   __weak __typeof(self) weakSelf = self;
 
@@ -480,15 +480,15 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
   }
 }
 
-// Updates all buttons visibility to match any recent WebState or SizeClass
-// change.
 - (void)updateAllButtonsVisibility {
+  UIColor* tintColor = [UIColor colorNamed:@"toolbar_button_color"];
   for (ToolbarButton* button in self.view.allButtons) {
+    button.tintColor = tintColor ?: [UIColor blackColor];
+    NSLog(@"AdaptiveToolbarViewController: Set button=%@ tintColor=%@", button, button.tintColor);
     [button updateHiddenInCurrentSizeClass];
   }
 }
 
-// Registers the actions which will be triggered when tapping a button.
 - (void)addStandardActionsForAllButtons {
   for (ToolbarButton* button in self.view.allButtons) {
     if (button != self.view.toolsMenuButton &&
@@ -503,7 +503,6 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
   }
 }
 
-// Records the use of a button.
 - (IBAction)recordUserMetrics:(id)sender {
   if (!sender) {
     return;
@@ -531,12 +530,8 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
   }
 }
 
-// Configures `button` with the menu provider, making sure that the items are
-// updated when the menu is presented. The `buttonType` is passed to the menu
-// provider.
 - (void)configureMenuProviderForButton:(UIButton*)button
                             buttonType:(AdaptiveToolbarButtonType)buttonType {
-  // Adds an empty menu so the event triggers the first time.
   UIMenu* emptyMenu = [UIMenu menuWithChildren:@[]];
   button.menu = emptyMenu;
 
@@ -568,14 +563,11 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
   self.view.shareButton.layoutGuideCenter = self.layoutGuideCenter;
 }
 
-// Exits fullscreen.
 - (void)exitFullscreen {
   [self.adaptiveDelegate exitFullscreen:FullscreenExitReason::kUserTapped];
 }
 
-// Modifies the UI based on the UITraits that changed on the device.
 - (void)updateUIOnTraitChange:(UITraitCollection*)previousTraitCollection {
-  // Progress bar and buttons visibility.
   [self updateAllButtonsVisibility];
   if (IsRegularXRegularSizeClass(self)) {
     [self.view.progressBar setHidden:YES animated:NO completion:nil];
@@ -583,7 +575,6 @@ const CGFloat kFullscreenProgressFullyExpanded = 1.0;
     [self.view.progressBar setHidden:NO animated:NO completion:nil];
   }
 
-  // Restore locationBarContainer height with previous fullscreen progress.
   if (previousTraitCollection.preferredContentSizeCategory !=
       self.traitCollection.preferredContentSizeCategory) {
     [self updateLocationBarHeightForFullscreenProgress:

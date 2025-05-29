@@ -10,21 +10,26 @@
 
 namespace {
 
-// Returns the default configuration with the given `point_size`.
-UIImageConfiguration* DefaultSymbolConfigurationWithPointSize(
-    CGFloat point_size) {
+UIImageConfiguration* DefaultSymbolConfigurationWithPointSize(CGFloat point_size) {
+  NSLog(@"SymbolHelpers: Creating configuration with point_size=%f", point_size);
   return [UIImageSymbolConfiguration
       configurationWithPointSize:point_size
                           weight:UIImageSymbolWeightMedium
                            scale:UIImageSymbolScaleMedium];
 }
 
-// Returns a symbol named `symbol_name` configured with the given
-// `configuration`. `system_symbol` is used to specify if it is a SFSymbol or a
-// custom symbol.
+UIImage* FallbackBlankImage() {
+  NSLog(@"SymbolHelpers: Generating fallback blank image");
+  UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+  UIImage* image = UIGraphicsGetImageFromCurrentImageContext();
+  UIGraphicsEndImageContext();
+  return image;
+}
+
 UIImage* SymbolWithConfiguration(NSString* symbol_name,
                                  UIImageConfiguration* configuration,
                                  BOOL system_symbol) {
+  NSLog(@"SymbolHelpers: Loading symbol=%@, system=%d", symbol_name, system_symbol);
   UIImage* symbol;
   if (system_symbol) {
     symbol = [UIImage systemImageNamed:symbol_name
@@ -34,7 +39,10 @@ UIImage* SymbolWithConfiguration(NSString* symbol_name,
                         inBundle:nil
                withConfiguration:configuration];
   }
-  DCHECK(symbol);
+  if (!symbol) {
+    NSLog(@"SymbolHelpers: Failed to load symbol=%@, system=%d, returning fallback", symbol_name, system_symbol);
+    symbol = FallbackBlankImage();
+  }
   return symbol;
 }
 

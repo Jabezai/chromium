@@ -9,40 +9,15 @@
 #import "base/check.h"
 #import "base/logging.h"
 #import "base/strings/sys_string_conversions.h"
-#import "build/build_config.h"
-#import "components/crash/core/common/objc_zombie.h"
+#include "build/build_config.h"
+#include "components/crash/core/common/objc_zombie.h"
 
 namespace {
 
 #if !defined(NDEBUG)
 
-// Swizzles [UIColor colorNamed:] to trigger a DCHECK if an invalid color is
-// attempted to be loaded.
-void SwizzleUIColorColorNamed() {
-  // The original implementation of [UIColor colorNamed:].
-  // Called by the new implementation.
-  static IMP originalImp;
-  IMP* originalImpPtr = &originalImp;
-
-  id swizzleBlock = ^(id self, NSString* colorName) {
-    // Call the original [UIColor colorNamed:] method.
-    UIColor* (*imp)(id, SEL, id) =
-        (UIColor * (*)(id, SEL, id)) * originalImpPtr;
-    Class aClass = objc_getClass("UIColor");
-    UIColor* color = imp(aClass, @selector(colorNamed:), colorName);
-    DCHECK(color) << "Missing color: " << base::SysNSStringToUTF8(colorName);
-    return color;
-  };
-
-  Method method = class_getClassMethod([UIColor class], @selector(colorNamed:));
-  DCHECK(method);
-
-  IMP blockImp = imp_implementationWithBlock(swizzleBlock);
-  originalImp = method_setImplementation(method, blockImp);
-}
-
-// Swizzles [UIImage imageNamed:] to trigger a DCHECK if an invalid image is
-// attempted to be loaded.
+// Swizzles [UIImage imageNamed:] to trigger a warning if an invalid image is
+// loaded.
 void SwizzleUIImageImageNamed() {
   // Retained by the swizzle block.
   // A set of image names that are exceptions to the 'missing image' check.
@@ -55,7 +30,7 @@ void SwizzleUIImageImageNamed() {
   // TODO(crbug.com/40519792): Add missing images.
   [exceptions addObject:@"glif-mic-to-dots-small_37"];
   [exceptions addObject:@"glif-mic-to-dots-large_37"];
-  [exceptions addObject:@"glif-google-to-dots_28"];
+  [exceptions addObject:@"glif-google-to-dots_140"];
   // TODO(crbug.com/41318906): Add missing image.
   [exceptions addObject:@"voice_icon_keyboard_accessory"];
 
@@ -73,25 +48,25 @@ void SwizzleUIImageImageNamed() {
 
     if (![exceptions containsObject:imageName] &&
         ![imageName containsString:@".FAUXBUNDLEID."]) {
-// TODO(crbug.com/40225445): Temporarily turn off DCHECK while bootstrapping
-// Catalyst. Log the error to the console instead.
-#if BUILDFLAG(IS_IOS_MACCATALYST)
-      DLOG(ERROR) << "Missing image: " << base::SysNSStringToUTF8(imageName);
-#else
-      DCHECK(image) << "Missing image: " << base::SysNSStringToUTF8(imageName);
-#endif
+      // TODO(crbug.com/40225445): Temporarily turn off warning while bootstrapping
+      // Catalyst. Log the error to the console instead.
+      #if BUILDFLAG(IS_IOS_MACCATALYST)
+        DLOG(WARNING) << "Missing image: " << base::SysNSStringToUTF8(imageName);
+      #else
+        DLOG(WARNING) << "Missing image: " << base::SysNSStringToUTF8(imageName);
+      #endif
     }
     return image;
   };
 
   Method method = class_getClassMethod([UIImage class], @selector(imageNamed:));
-  DCHECK(method);
+  CHECK(method);
 
   IMP blockImp = imp_implementationWithBlock(swizzleBlock);
   originalImp = method_setImplementation(method, blockImp);
 }
 
-// Swizzles +[UIImage imageWithContentsOfFile:] to trigger a DCHECK if an
+// Swizzles +[UIImage imageWithContentsOfFile:] to trigger a warning if an
 // invalid image is attempted to be loaded.
 void SwizzleUIImageImageWithContentsOfFile() {
   // The original implementation of [UIImage imageWithContentsOfFile:].
@@ -106,19 +81,19 @@ void SwizzleUIImageImageWithContentsOfFile() {
     Class class_object = objc_getClass("UIImage");
     UIImage* image =
         imp(class_object, @selector(imageWithContentsOfFile:), path);
-    DCHECK(image) << "Missing image at path: " << base::SysNSStringToUTF8(path);
+    DLOG(WARNING) << "Missing image at path: " << base::SysNSStringToUTF8(path);
     return image;
   };
 
   Method method = class_getClassMethod([UIImage class],
                                        @selector(imageWithContentsOfFile:));
-  DCHECK(method);
+  CHECK(method);
 
   IMP block_imp = imp_implementationWithBlock(swizzle_block);
   original_imp = method_setImplementation(method, block_imp);
 }
 
-// Swizzles +[NSData dataWithContentsOfFile:] to trigger a DCHECK if an invalid
+// Swizzles +[NSData dataWithContentsOfFile:] to trigger a warning if an invalid
 // image is attempted to be loaded.
 void SwizzleNSDataDataWithContentsOfFile() {
   // The original implementation of [NSData dataWithContentsOfFile:].
@@ -143,14 +118,14 @@ void SwizzleNSDataDataWithContentsOfFile() {
     NSData* data = imp(class_object, @selector(dataWithContentsOfFile:), path);
     if (![exceptions containsObject:[path pathExtension]] &&
         [path pathExtension]) {
-      DCHECK(data) << "Missing data at path: " << base::SysNSStringToUTF8(path);
+      DLOG(WARNING) << "Missing data at path: " << base::SysNSStringToUTF8(path);
     }
     return data;
   };
 
   Method method =
       class_getClassMethod([NSData class], @selector(dataWithContentsOfFile:));
-  DCHECK(method);
+  CHECK(method);
 
   IMP block_imp = imp_implementationWithBlock(swizzle_block);
   original_imp = method_setImplementation(method, block_imp);
@@ -167,13 +142,12 @@ void SwizzleNSDataDataWithContentsOfFile() {
 // TODO(crbug.com/40492640): Consider enabling this on device builds too.
 #if TARGET_IPHONE_SIMULATOR
 #if !defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER)
-  DCHECK(ObjcEvilDoers::ZombieEnable(true, 10000));
+  CHECK(ObjcEvilDoers::ZombieEnable(true, 10000));
 #endif
 #endif
 
 #if !defined(NDEBUG)
   // Enable the detection of missing assets.
-  SwizzleUIColorColorNamed();
   SwizzleUIImageImageNamed();
   SwizzleUIImageImageWithContentsOfFile();
   SwizzleNSDataDataWithContentsOfFile();

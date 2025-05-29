@@ -922,8 +922,13 @@ const CGFloat kHeaderImageShadowShadowInset = 20;
     _disclaimerView.adjustsFontForContentSizeCategory = YES;
     _disclaimerView.delegate = self;
     _disclaimerView.backgroundColor = UIColor.clearColor;
+    UIColor* linkColor = [UIColor colorNamed:kBlueColor];
+    if (!linkColor) {
+      NSLog(@"PromoStyleViewController: kBlueColor is nil in disclaimerView");
+      linkColor = [UIColor blueColor];
+    }
     _disclaimerView.linkTextAttributes =
-        @{NSForegroundColorAttributeName : [UIColor colorNamed:kBlueColor]};
+        @{NSForegroundColorAttributeName : linkColor};
     _disclaimerView.translatesAutoresizingMaskIntoConstraints = NO;
     _disclaimerView.attributedText = [self attributedStringForDisclaimer];
   }

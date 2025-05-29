@@ -395,7 +395,7 @@ void PositionView(UIView* view, CGPoint point) {
   MDCActivityIndicator* activityIndicator =
       [[MDCActivityIndicator alloc] initWithFrame:indicatorFrame];
   activityIndicator.translatesAutoresizingMaskIntoConstraints = NO;
-  activityIndicator.cycleColors = @[ [UIColor colorNamed:kBlueColor] ];
+  activityIndicator.cycleColors = @[ [UIColor colorNamed:kBlueColor] ?: [UIColor blueColor] ];
   activityIndicator.radius = ui::AlignValueToUpperPixel(kIndicatorSize / 2);
 
   UILabel* titleLabel = [[UILabel alloc] init];
@@ -414,80 +414,94 @@ void PositionView(UIView* view, CGPoint point) {
   selectIconView.translatesAutoresizingMaskIntoConstraints = NO;
   selectIconView.contentMode = UIViewContentModeScaleAspectFit;
   selectIconView.hidden = !self.isInSelectionMode;
+  UIImage* selectIconImage = [self selectIconImageForCurrentState];
+  if (!selectIconImage) {
+      NSLog(@"GridCell: selectIconImage is nil for state=%ld", (long)_state);
+      selectIconImage = DefaultSymbolTemplateWithPointSize(kCircleSymbol, kIconSymbolPointSize);
+  }
+  selectIconView.image = selectIconImage;
 
-  selectIconView.image = [self selectIconImageForCurrentState];
+  NSMutableArray* subviews = [NSMutableArray array];
+  if (iconView) [subviews addObject:iconView];
+  else NSLog(@"GridCell: iconView is nil in setupTopBar");
+  if (activityIndicator) [subviews addObject:activityIndicator];
+  else NSLog(@"GridCell: activityIndicator is nil in setupTopBar");
+  if (titleLabel) [subviews addObject:titleLabel];
+  else NSLog(@"GridCell: titleLabel is nil in setupTopBar");
+  if (closeIconView) [subviews addObject:closeIconView];
+  else NSLog(@"GridCell: closeIconView is nil in setupTopBar");
+  if (selectIconView) [subviews addObject:selectIconView];
+  else NSLog(@"GridCell: selectIconView is nil in setupTopBar");
 
-  [topBar addSubview:selectIconView];
-  _selectIconView = selectIconView;
-
-  [topBar addSubview:iconView];
-  [topBar addSubview:activityIndicator];
-  [topBar addSubview:titleLabel];
-  [topBar addSubview:closeIconView];
+  for (UIView* subview in subviews) {
+      [topBar addSubview:subview];
+  }
 
   _iconView = iconView;
   _activityIndicator = activityIndicator;
   _titleLabel = titleLabel;
   _closeIconView = closeIconView;
+  _selectIconView = selectIconView;
 
   _accessibilityConstraints = @[
-    [titleLabel.leadingAnchor
-        constraintEqualToAnchor:topBar.leadingAnchor
-                       constant:kGridCellHeaderLeadingInset],
-    [iconView.widthAnchor constraintEqualToConstant:0],
-    [iconView.heightAnchor constraintEqualToConstant:0],
+      [titleLabel.leadingAnchor
+          constraintEqualToAnchor:topBar.leadingAnchor
+                         constant:kGridCellHeaderLeadingInset],
+      [iconView.widthAnchor constraintEqualToConstant:0],
+      [iconView.heightAnchor constraintEqualToConstant:0],
   ];
 
   _nonAccessibilityConstraints = @[
-    [iconView.leadingAnchor
-        constraintEqualToAnchor:topBar.leadingAnchor
-                       constant:kGridCellHeaderLeadingInset],
-    [iconView.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
-    [iconView.widthAnchor constraintEqualToConstant:kGridCellIconDiameter],
-    [iconView.heightAnchor constraintEqualToConstant:kGridCellIconDiameter],
-    [titleLabel.leadingAnchor
-        constraintEqualToAnchor:iconView.trailingAnchor
-                       constant:kGridCellHeaderLeadingInset],
+      [iconView.leadingAnchor
+          constraintEqualToAnchor:topBar.leadingAnchor
+                         constant:kGridCellHeaderLeadingInset],
+      [iconView.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+      [iconView.widthAnchor constraintEqualToConstant:kGridCellIconDiameter],
+      [iconView.heightAnchor constraintEqualToConstant:kGridCellIconDiameter],
+      [titleLabel.leadingAnchor
+          constraintEqualToAnchor:iconView.trailingAnchor
+                         constant:kGridCellHeaderLeadingInset],
   ];
 
   _topBarHeightConstraint =
       [topBar.heightAnchor constraintEqualToConstant:kGridCellHeaderHeight];
 
   _closeIconConstraints = @[
-    [titleLabel.trailingAnchor
-        constraintEqualToAnchor:closeIconView.leadingAnchor
-                       constant:-kGridCellTitleLabelContentInset],
-    [topBar.topAnchor constraintEqualToAnchor:closeIconView.centerYAnchor
-                                     constant:-kGridCellCloseButtonTopSpacing],
-    [closeIconView.trailingAnchor
-        constraintEqualToAnchor:topBar.trailingAnchor
-                       constant:-kGridCellCloseButtonContentInset],
+      [titleLabel.trailingAnchor
+          constraintEqualToAnchor:closeIconView.leadingAnchor
+                         constant:-kGridCellTitleLabelContentInset],
+      [topBar.topAnchor constraintEqualToAnchor:closeIconView.centerYAnchor
+                                       constant:-kGridCellCloseButtonTopSpacing],
+      [closeIconView.trailingAnchor
+          constraintEqualToAnchor:topBar.trailingAnchor
+                         constant:-kGridCellCloseButtonContentInset],
   ];
 
   if (_selectIconView) {
-    _selectIconConstraints = @[
-      [_selectIconView.heightAnchor
-          constraintEqualToConstant:kGridCellSelectIconSize],
-      [_selectIconView.widthAnchor
-          constraintEqualToConstant:kGridCellSelectIconSize],
-      [titleLabel.trailingAnchor
-          constraintEqualToAnchor:_selectIconView.leadingAnchor
-                         constant:-kGridCellTitleLabelContentInset],
-      [topBar.topAnchor constraintEqualToAnchor:_selectIconView.topAnchor
-                                       constant:-kGridCellSelectIconTopSpacing],
-      [_selectIconView.trailingAnchor
-          constraintEqualToAnchor:topBar.trailingAnchor
-                         constant:-kGridCellSelectIconContentInset],
-
-    ];
+      _selectIconConstraints = @[
+          [_selectIconView.heightAnchor
+              constraintEqualToConstant:kGridCellSelectIconSize],
+          [_selectIconView.widthAnchor
+              constraintEqualToConstant:kGridCellSelectIconSize],
+          [titleLabel.trailingAnchor
+              constraintEqualToAnchor:_selectIconView.leadingAnchor
+                             constant:-kGridCellTitleLabelContentInset],
+          [topBar.topAnchor constraintEqualToAnchor:_selectIconView.topAnchor
+                                           constant:-kGridCellSelectIconTopSpacing],
+          [_selectIconView.trailingAnchor
+              constraintEqualToAnchor:topBar.trailingAnchor
+                             constant:-kGridCellSelectIconContentInset],
+      ];
+  } else {
+      NSLog(@"GridCell: selectIconConstraints not set due to nil selectIconView");
   }
 
   [self updateTopBarSize];
   [self configureCloseOrSelectIconConstraints];
 
   NSArray* constraints = @[
-    _topBarHeightConstraint,
-    [titleLabel.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+      _topBarHeightConstraint,
+      [titleLabel.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
   ];
 
   // Center indicator over favicon.
@@ -504,13 +518,12 @@ void PositionView(UIView* view, CGPoint point) {
   [closeIconView setContentHuggingPriority:UILayoutPriorityRequired
                                    forAxis:UILayoutConstraintAxisHorizontal];
   if (_selectIconView) {
-    [_selectIconView
-        setContentCompressionResistancePriority:UILayoutPriorityRequired
-                                        forAxis:
-                                            UILayoutConstraintAxisHorizontal];
-    [_selectIconView
-        setContentHuggingPriority:UILayoutPriorityRequired
-                          forAxis:UILayoutConstraintAxisHorizontal];
+      [_selectIconView
+          setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                          forAxis:UILayoutConstraintAxisHorizontal];
+      [_selectIconView
+          setContentHuggingPriority:UILayoutPriorityRequired
+                            forAxis:UILayoutConstraintAxisHorizontal];
   }
   return topBar;
 }
@@ -695,6 +708,7 @@ void PositionView(UIView* view, CGPoint point) {
   proxy.opacity = cell.opacity;
   return proxy;
 }
+
 #pragma mark - GridToTabTransitionView properties.
 
 - (void)setTopCellView:(UIView*)topCellView {

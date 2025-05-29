@@ -36,15 +36,30 @@
 }
 
 - (UIColor*)buttonsTintColor {
-  return [UIColor colorNamed:kToolbarButtonColor];
+  UIColor* color = [UIColor colorNamed:kToolbarButtonColor];
+  if (!color) {
+    NSLog(@"ToolbarConfiguration: Failed to load toolbar_button_color from Assets.xcassets, style=%ld", (long)_style);
+  }
+  NSLog(@"ToolbarConfiguration: buttonsTintColor=%@, style=%ld", color, (long)_style);
+  return color ?: [UIColor blackColor]; // Fallback to black if nil
 }
 
 - (UIColor*)buttonsTintColorHighlighted {
-  return [UIColor colorNamed:@"tab_toolbar_button_color_highlighted"];
+  UIColor* color = [UIColor colorNamed:kToolbarButtonColor];
+  if (!color) {
+    NSLog(@"ToolbarConfiguration: Failed to load toolbar_button_color from Assets.xcassets for highlighted, style=%ld", (long)_style);
+  }
+  NSLog(@"ToolbarConfiguration: buttonsTintColorHighlighted=%@, style=%ld", color, (long)_style);
+  return color ?: [UIColor blackColor]; // Fallback to black if nil
 }
 
 - (UIColor*)buttonsTintColorIPHHighlighted {
-  return [UIColor colorNamed:kSolidButtonTextColor];
+  UIColor* color = [UIColor colorNamed:kToolbarButtonColor];
+  if (!color) {
+    NSLog(@"ToolbarConfiguration: Failed to load toolbar_button_color from Assets.xcassets for IPH highlighted, style=%ld", (long)_style);
+  }
+  NSLog(@"ToolbarConfiguration: buttonsTintColorIPHHighlighted=%@, style=%ld", color, (long)_style);
+  return color ?: [UIColor blackColor]; // Fallback to black if nil
 }
 
 - (UIColor*)buttonsIPHHighlightColor {
@@ -52,8 +67,6 @@
 }
 
 - (UIColor*)locationBarBackgroundColorWithVisibility:(CGFloat)visibilityFactor {
-  // For the omnibox specifically, the background should be different in
-  // incognito compared to dark mode.
   switch (self.style) {
     case ToolbarStyle::kNormal:
       return [[UIColor colorNamed:kTextfieldBackgroundColor]
@@ -68,8 +81,8 @@
   switch (self.style) {
     case ToolbarStyle::kNormal:
       return l10n_util::GetNSString(inGroup
-                                        ? IDS_IOS_TOOLBAR_OPEN_NEW_TAB_IN_GROUP
-                                        : IDS_IOS_TOOLBAR_OPEN_NEW_TAB);
+                                      ? IDS_IOS_TOOLBAR_OPEN_NEW_TAB_IN_GROUP
+                                      : IDS_IOS_TOOLBAR_OPEN_NEW_TAB);
     case ToolbarStyle::kIncognito:
       return l10n_util::GetNSString(
           inGroup ? IDS_IOS_TOOLBAR_OPEN_NEW_TAB_INCOGNITO_IN_GROUP

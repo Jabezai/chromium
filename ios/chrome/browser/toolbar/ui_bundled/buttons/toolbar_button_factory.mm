@@ -25,14 +25,8 @@
 #import "ui/base/l10n/l10n_util.h"
 
 namespace {
-
-// The size of the symbol image.
 const CGFloat kSymbolToolbarPointSize = 24;
-
-// The padding to be added to the bottom of the system share icon to balance
-// the white space on top.
 const CGFloat kShareIconBalancingHeightPadding = 1;
-
 }  // namespace
 
 @implementation ToolbarButtonFactory
@@ -42,6 +36,7 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
   if (self) {
     _style = style;
     _toolbarConfiguration = [[ToolbarConfiguration alloc] initWithStyle:style];
+    NSLog(@"ToolbarButtonFactory: Initialized with style=%ld", (long)style);
   }
   return self;
 }
@@ -50,14 +45,20 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 
 - (ToolbarButton*)backButton {
   auto loadImageBlock = ^UIImage* {
-    UIImage* backImage =
-        DefaultSymbolWithPointSize(kBackSymbol, kSymbolToolbarPointSize);
-    return [backImage imageFlippedForRightToLeftLayoutDirection];
+    UIImage* image = [UIImage systemImageNamed:kBackSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"backButton: systemImageNamed:%@ failed", kBackSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    return [image imageFlippedForRightToLeftLayoutDirection];
   };
 
   ToolbarButton* backButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock];
-
   [self configureButton:backButton width:kAdaptiveToolbarButtonWidth];
   backButton.accessibilityLabel = l10n_util::GetNSString(IDS_ACCNAME_BACK);
   backButton.accessibilityHint =
@@ -66,20 +67,27 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
                  action:@selector(backAction)
        forControlEvents:UIControlEventTouchUpInside];
   backButton.visibilityMask = self.visibilityConfiguration.backButtonVisibility;
+  NSLog(@"ToolbarButtonFactory: Created backButton=%@, caller=%@",
+        backButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return backButton;
 }
 
-// Returns a forward button without visibility mask configured.
 - (ToolbarButton*)forwardButton {
   auto loadImageBlock = ^UIImage* {
-    UIImage* forwardImage =
-        DefaultSymbolWithPointSize(kForwardSymbol, kSymbolToolbarPointSize);
-    return [forwardImage imageFlippedForRightToLeftLayoutDirection];
+    UIImage* image = [UIImage systemImageNamed:kForwardSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"forwardButton: systemImageNamed:%@ failed", kForwardSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    return [image imageFlippedForRightToLeftLayoutDirection];
   };
 
   ToolbarButton* forwardButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock];
-
   [self configureButton:forwardButton width:kAdaptiveToolbarButtonWidth];
   forwardButton.visibilityMask =
       self.visibilityConfiguration.forwardButtonVisibility;
@@ -90,24 +98,30 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
   [forwardButton addTarget:self.actionHandler
                     action:@selector(forwardAction)
           forControlEvents:UIControlEventTouchUpInside];
+  NSLog(@"ToolbarButtonFactory: Created forwardButton=%@, caller=%@",
+        forwardButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return forwardButton;
 }
 
 - (ToolbarTabGridButton*)tabGridButton {
   auto imageBlock = ^UIImage*(ToolbarTabGroupState tabGroupState) {
-    switch (tabGroupState) {
-      case ToolbarTabGroupState::kNormal:
-        return CustomSymbolWithPointSize(kSquareNumberSymbol,
-                                         kSymbolToolbarPointSize);
-      case ToolbarTabGroupState::kTabGroup:
-        return DefaultSymbolWithPointSize(kSquareFilledOnSquareSymbol,
-                                          kSymbolToolbarPointSize);
+    NSString* symbol = (tabGroupState == ToolbarTabGroupState::kNormal)
+                           ? kSquareNumberSymbol
+                           : kSquareFilledOnSquareSymbol;
+    UIImage* image = [UIImage systemImageNamed:symbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"tabGridButton: systemImageNamed:%@ failed for state=%ld", symbol, (long)tabGroupState);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
     }
+    return image;
   };
 
   ToolbarTabGridButton* tabGridButton = [[ToolbarTabGridButton alloc]
       initWithTabGroupStateImageLoader:imageBlock];
-
   tabGridButton.accessibilityHint =
       l10n_util::GetNSString(IDS_IOS_TOOLBAR_ACCESSIBILITY_HINT_TAB_GRID);
   [self configureButton:tabGridButton width:kAdaptiveToolbarButtonWidth];
@@ -119,26 +133,41 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
           forControlEvents:UIControlEventTouchUpInside];
   tabGridButton.visibilityMask =
       self.visibilityConfiguration.tabGridButtonVisibility;
+  NSLog(@"ToolbarButtonFactory: Created tabGridButton=%@, caller=%@",
+        tabGridButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return tabGridButton;
 }
 
 - (ToolbarButton*)toolsMenuButton {
   auto loadImageBlock = ^UIImage* {
-    return DefaultSymbolWithPointSize(kMenuSymbol, kSymbolToolbarPointSize);
+    UIImage* image = [UIImage systemImageNamed:kMenuSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"toolsMenuButton: systemImageNamed:%@ failed", kMenuSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    return image;
   };
-  UIColor* locationBarBackgroundColor =
-      [self.toolbarConfiguration locationBarBackgroundColorWithVisibility:1];
 
   auto loadIPHHighlightedImageBlock = ^UIImage* {
-    return SymbolWithPalette(
-        CustomSymbolWithPointSize(kEllipsisSquareFillSymbol,
-                                  kSymbolToolbarPointSize),
-        @[ [UIColor colorNamed:kGrey600Color], locationBarBackgroundColor ]);
+    UIImage* image = [UIImage systemImageNamed:kEllipsisSquareFillSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"toolsMenuButton: systemImageNamed:%@ failed for IPH", kEllipsisSquareFillSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    return [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
   };
+
   ToolbarButton* toolsMenuButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock
                        IPHHighlightedImageLoader:loadIPHHighlightedImageBlock];
-
   SetA11yLabelAndUiAutomationName(toolsMenuButton, IDS_IOS_TOOLBAR_SETTINGS,
                                   kToolbarToolsMenuButtonIdentifier);
   [self configureButton:toolsMenuButton width:kAdaptiveToolbarButtonWidth];
@@ -150,18 +179,22 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
             forControlEvents:UIControlEventTouchUpInside];
   toolsMenuButton.visibilityMask =
       self.visibilityConfiguration.toolsMenuButtonVisibility;
+  NSLog(@"ToolbarButtonFactory: Created toolsMenuButton=%@, caller=%@",
+        toolsMenuButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return toolsMenuButton;
 }
 
 - (ToolbarButton*)shareButton {
   auto loadImageBlock = ^UIImage* {
-    UIImage* image =
-        DefaultSymbolWithPointSize(kShareSymbol, kSymbolToolbarPointSize);
-
-    // The system share image has uneven vertical padding. Add a small bottom
-    // padding to balance it.
-    // TODO(crbug.com/411039614): Replace UIGraphicsBeginImageContextWithOptions
-    // with UIGraphicsImageRenderer.
+    UIImage* image = [UIImage systemImageNamed:kShareSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"shareButton: systemImageNamed:%@ failed", kShareSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
     UIGraphicsBeginImageContextWithOptions(
         CGSizeMake(image.size.width,
                    image.size.height + kShareIconBalancingHeightPadding),
@@ -169,13 +202,11 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
     [image drawInRect:CGRectMake(0, 0, image.size.width, image.size.height)];
     UIImage* newImage = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
-
     return newImage;
   };
 
   ToolbarButton* shareButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock];
-
   [self configureButton:shareButton width:kAdaptiveToolbarButtonWidth];
   SetA11yLabelAndUiAutomationName(shareButton, IDS_IOS_TOOLS_MENU_SHARE,
                                   kToolbarShareButtonIdentifier);
@@ -185,18 +216,27 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
         forControlEvents:UIControlEventTouchUpInside];
   shareButton.visibilityMask =
       self.visibilityConfiguration.shareButtonVisibility;
+  NSLog(@"ToolbarButtonFactory: Created shareButton=%@, caller=%@",
+        shareButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return shareButton;
 }
 
 - (ToolbarButton*)reloadButton {
   auto loadImageBlock = ^UIImage* {
-    return CustomSymbolWithPointSize(kArrowClockWiseSymbol,
-                                     kSymbolToolbarPointSize);
+    UIImage* image = [UIImage systemImageNamed:kArrowClockWiseSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"reloadButton: systemImageNamed:%@ failed", kArrowClockWiseSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    return image;
   };
 
   ToolbarButton* reloadButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock];
-
   [self configureButton:reloadButton width:kAdaptiveToolbarButtonWidth];
   reloadButton.accessibilityLabel =
       l10n_util::GetNSString(IDS_IOS_ACCNAME_RELOAD);
@@ -205,87 +245,119 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
          forControlEvents:UIControlEventTouchUpInside];
   reloadButton.visibilityMask =
       self.visibilityConfiguration.reloadButtonVisibility;
+  NSLog(@"ToolbarButtonFactory: Created reloadButton=%@, caller=%@",
+        reloadButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return reloadButton;
 }
 
 - (ToolbarButton*)stopButton {
   auto loadImageBlock = ^UIImage* {
-    return DefaultSymbolWithPointSize(kXMarkSymbol, kSymbolToolbarPointSize);
+    UIImage* image = [UIImage systemImageNamed:kXMarkSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"stopButton: systemImageNamed:%@ failed", kXMarkSymbol);
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    return image;
   };
 
   ToolbarButton* stopButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock];
-
   [self configureButton:stopButton width:kAdaptiveToolbarButtonWidth];
   stopButton.accessibilityLabel = l10n_util::GetNSString(IDS_IOS_ACCNAME_STOP);
   [stopButton addTarget:self.actionHandler
                  action:@selector(stopAction)
        forControlEvents:UIControlEventTouchUpInside];
   stopButton.visibilityMask = self.visibilityConfiguration.stopButtonVisibility;
+  NSLog(@"ToolbarButtonFactory: Created stopButton=%@, caller=%@",
+        stopButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return stopButton;
 }
 
 - (ToolbarButton*)openNewTabButton {
-  UIColor* locationBarBackgroundColor =
-      [self.toolbarConfiguration locationBarBackgroundColorWithVisibility:1];
-  UIColor* buttonsTintColorIPHHighlighted =
-      self.toolbarConfiguration.buttonsTintColorIPHHighlighted;
-  UIColor* buttonsIPHHighlightColor =
-      self.toolbarConfiguration.buttonsIPHHighlightColor;
+  UIColor* buttonTintColor = [UIColor colorNamed:@"toolbar_button_color"];
+  NSLog(@"openNewTabButton: Using buttonTintColor=%@", buttonTintColor);
 
   auto loadImageBlock = ^UIImage* {
-    return SymbolWithPalette(
-        CustomSymbolWithPointSize(kPlusCircleFillSymbol,
-                                  kSymbolToolbarPointSize),
-        @[ [UIColor colorNamed:kGrey600Color], locationBarBackgroundColor ]);
+    UIImage* image = [UIImage systemImageNamed:kPlusCircleFillSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"openNewTabButton: systemImageNamed:%@ failed, trying kPlusSymbol", kPlusCircleFillSymbol);
+      image = [UIImage systemImageNamed:kPlusSymbol
+                    withConfiguration:[UIImageSymbolConfiguration
+                                          configurationWithPointSize:kSymbolToolbarPointSize]];
+    }
+    if (!image) {
+      NSLog(@"openNewTabButton: FATAL: All image attempts failed");
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    NSLog(@"openNewTabButton: loadImageBlock image=%@, size=%@", image, NSStringFromCGSize(image.size));
+    return image;
   };
 
   auto loadIPHHighlightedImageBlock = ^UIImage* {
-    return SymbolWithPalette(CustomSymbolWithPointSize(kPlusCircleFillSymbol,
-                                                       kSymbolToolbarPointSize),
-                             @[
-                               // The color of the 'plus'.
-                               buttonsTintColorIPHHighlighted,
-                               // The filling color of the circle.
-                               buttonsIPHHighlightColor,
-                             ]);
+    UIImage* image = [UIImage systemImageNamed:kPlusCircleFillSymbol
+                          withConfiguration:[UIImageSymbolConfiguration
+                                                configurationWithPointSize:kSymbolToolbarPointSize]];
+    if (!image) {
+      NSLog(@"openNewTabButton: systemImageNamed:%@ failed for IPH, trying kPlusSymbol", kPlusCircleFillSymbol);
+      image = [UIImage systemImageNamed:kPlusSymbol
+                    withConfiguration:[UIImageSymbolConfiguration
+                                          configurationWithPointSize:kSymbolToolbarPointSize]];
+    }
+    if (!image) {
+      NSLog(@"openNewTabButton: FATAL: All IPH image attempts failed");
+      UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    NSLog(@"openNewTabButton: loadIPHHighlightedImageBlock image=%@, size=%@", image, NSStringFromCGSize(image.size));
+    return image;
   };
 
   ToolbarButton* newTabButton =
       [[ToolbarButton alloc] initWithImageLoader:loadImageBlock
                        IPHHighlightedImageLoader:loadIPHHighlightedImageBlock];
-
+  newTabButton.tintColor = buttonTintColor;
   [newTabButton addTarget:self.actionHandler
                    action:@selector(newTabAction:)
          forControlEvents:UIControlEventTouchUpInside];
-
   [self configureButton:newTabButton width:kAdaptiveToolbarButtonWidth];
-
   newTabButton.accessibilityLabel = [self.toolbarConfiguration
       accessibilityLabelForOpenNewTabButtonInGroup:NO];
   newTabButton.accessibilityIdentifier = kToolbarNewTabButtonIdentifier;
   newTabButton.accessibilityHint =
       l10n_util::GetNSString(IDS_IOS_TOOLBAR_ACCESSIBILITY_HINT_NEW_TAB);
-
   newTabButton.visibilityMask =
       self.visibilityConfiguration.newTabButtonVisibility;
+  newTabButton.tintColor = buttonTintColor;
+  NSLog(@"openNewTabButton: Created button=%@, tintColor=%@, image=%@, caller=%@",
+        newTabButton, newTabButton.tintColor, newTabButton.imageView.image,
+        [[NSThread callStackSymbols] objectAtIndex:1]);
   return newTabButton;
 }
 
 - (UIButton*)cancelButton {
   UIButton* cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
-  cancelButton.tintColor = [UIColor colorNamed:kBlueColor];
+  cancelButton.tintColor = [UIColor colorNamed:@"toolbar_button_color"];
   [cancelButton setContentHuggingPriority:UILayoutPriorityRequired
                                   forAxis:UILayoutConstraintAxisHorizontal];
   [cancelButton
       setContentCompressionResistancePriority:UILayoutPriorityRequired
                                       forAxis:UILayoutConstraintAxisHorizontal];
-
   UIButtonConfiguration* buttonConfiguration =
       [UIButtonConfiguration plainButtonConfiguration];
   buttonConfiguration.contentInsets = NSDirectionalEdgeInsetsMake(
       0, kCancelButtonHorizontalInset, 0, kCancelButtonHorizontalInset);
-  UIFont* font = [UIFont systemFontOfSize:kLocationBarFontSize];
+  UIFont* font = [UIFont fontWithName:@"WFVisualSans-RegularText" size:kLocationBarFontSize];
   NSDictionary* attributes = @{NSFontAttributeName : font};
   NSMutableAttributedString* attributedString =
       [[NSMutableAttributedString alloc]
@@ -293,23 +365,19 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
               attributes:attributes];
   buttonConfiguration.attributedTitle = attributedString;
   cancelButton.configuration = buttonConfiguration;
-
   cancelButton.hidden = YES;
   [cancelButton addTarget:self.actionHandler
                    action:@selector(cancelOmniboxFocusAction)
          forControlEvents:UIControlEventTouchUpInside];
   cancelButton.accessibilityIdentifier =
       kToolbarCancelOmniboxEditButtonIdentifier;
+  NSLog(@"ToolbarButtonFactory: Created cancelButton=%@, caller=%@",
+        cancelButton, [[NSThread callStackSymbols] objectAtIndex:1]);
   return cancelButton;
 }
 
 #pragma mark - Helpers
 
-// Sets the `button` width to `width` with a priority of
-// UILayoutPriorityRequired - 1. If the priority is `UILayoutPriorityRequired`,
-// there is a conflict when the buttons are hidden as the stack view is setting
-// their width to 0. Setting the priority to UILayoutPriorityDefaultHigh doesn't
-// work as they would have a lower priority than other elements.
 - (void)configureButton:(ToolbarButton*)button width:(CGFloat)width {
   NSLayoutConstraint* constraint =
       [button.widthAnchor constraintEqualToConstant:width];
@@ -327,12 +395,12 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
   button.pointerStyleProvider =
       ^UIPointerStyle*(UIButton* uiButton, UIPointerEffect* proposedEffect,
                        UIPointerShape* proposedShape) {
-        // This gets rid of a thin border on a spotlighted bookmarks button.
-        // This is applied to all toolbar buttons for consistency.
         CGRect rect = CGRectInset(uiButton.frame, 1, 1);
         UIPointerShape* shape = [UIPointerShape shapeWithRoundedRect:rect];
         return [UIPointerStyle styleWithEffect:proposedEffect shape:shape];
       };
+  NSLog(@"ToolbarButtonFactory: Configured button=%@, width=%f, caller=%@",
+        button, width, [[NSThread callStackSymbols] objectAtIndex:1]);
 }
 
 @end

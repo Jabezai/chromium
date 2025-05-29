@@ -47,7 +47,6 @@
 #import "ios/chrome/browser/start_surface/ui_bundled/start_surface_features.h"
 #import "ios/chrome/browser/toolbar/ui_bundled/public/fakebox_focuser.h"
 #import "ios/chrome/browser/toolbar/ui_bundled/public/toolbar_utils.h"
-#import "ios/chrome/browser/toolbar/ui_bundled/tab_groups/ui/tab_group_indicator_view.h"
 #import "ios/chrome/common/material_timing.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
@@ -594,22 +593,38 @@ const CGFloat kIdentityDiscMaxFontSize = 24;
   } else {
     button.layer.cornerRadius = 0;
     [button setImage:nil forState:UIControlStateNormal];
-    UIButtonConfiguration* config =
-        [UIButtonConfiguration plainButtonConfiguration];
-    config.background.backgroundColor =
-        [[UIColor colorNamed:kBlueColor] colorWithAlphaComponent:0.08];
+    UIButtonConfiguration* config = [UIButtonConfiguration plainButtonConfiguration];
+    
+    UIColor* bgColor = [[UIColor colorNamed:kBlueColor] colorWithAlphaComponent:0.08];
+    UIColor* fgColor = [UIColor colorNamed:kBlueColor];
+    UIFont* font = PreferredFontForTextStyle(UIFontTextStyleBody, UIFontWeightBold, kIdentityDiscMaxFontSize);
+    
+    if (!bgColor) {
+        NSLog(@"NewTabPageHeaderViewController: bgColor is nil for kBlueColor");
+        bgColor = [UIColor colorWithRed:0.0 green:0.0 blue:1.0 alpha:0.08];
+    }
+    if (!fgColor) {
+        NSLog(@"NewTabPageHeaderViewController: fgColor is nil for kBlueColor");
+        fgColor = [UIColor blueColor];
+    }
+    if (!font) {
+        NSLog(@"NewTabPageHeaderViewController: font is nil");
+        font = [UIFont boldSystemFontOfSize:17.0];
+    }
+    
+    config.background.backgroundColor = bgColor;
     NSDictionary* attributes = @{
-      NSFontAttributeName : PreferredFontForTextStyle(
-          UIFontTextStyleBody, UIFontWeightSemibold, kIdentityDiscMaxFontSize),
-      NSForegroundColorAttributeName : [UIColor colorNamed:kBlueColor],
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: fgColor,
     };
+    NSString* titleText = l10n_util::GetNSString(IDS_IOS_SIGNIN_BUTTON_TEXT);
     config.attributedTitle = [[NSAttributedString alloc]
-        initWithString:l10n_util::GetNSString(IDS_IOS_SIGNIN_BUTTON_TEXT)
+        initWithString:titleText ?: @"Sign In"
             attributes:attributes];
-    config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     config.contentInsets = NSDirectionalEdgeInsetsMake(
         kPillVerticalPadding, kPillHorizontalPadding, kPillVerticalPadding,
         kPillHorizontalPadding);
+    config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     button.configuration = config;
   }
 

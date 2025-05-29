@@ -1,299 +1,180 @@
-// Copyright 2017 The Chromium Authors
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #import "ios/chrome/browser/toolbar/ui_bundled/buttons/toolbar_button.h"
 
-#import "base/check.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
-#import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
-#import "ios/chrome/browser/shared/ui/util/util_swift.h"
-#import "ios/chrome/browser/toolbar/ui_bundled/buttons/buttons_constants.h"
 #import "ios/chrome/browser/toolbar/ui_bundled/buttons/toolbar_configuration.h"
-#import "ios/chrome/browser/toolbar/ui_bundled/public/toolbar_constants.h"
+#import "ios/chrome/browser/toolbar/ui_bundled/buttons/toolbar_style.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
 
-namespace {
-const CGFloat kSpotlightSize = 38;
-const CGFloat kSpotlightCornerRadius = 7;
-const CGFloat kToolsMenuButtonImageSize = 35;
-const CGFloat kBlueDotSize = 10;
-const CGFloat kButtonImageInset = 3;
-}  // namespace
+@interface ToolbarButton ()
 
-@interface ToolbarButton () {
-  // The image loader used to load `_image` when the button is updated to
-  // visible.
-  ToolbarButtonImageLoader _imageLoader;
-  // The image loader used to load `_IPHHighlightedImage` when the button is
-  // updated to visible and highlighted.
-  ToolbarButtonImageLoader _IPHHighlightedImageLoader;
-}
-
-// The image used for the normal state.
 @property(nonatomic, strong) UIImage* image;
-// The image used for iphHighlighted state. If this property is not nil, the
-// iphHighlighted effect will be replacing the default image with this one,
-// instead of using tint color OR `self.spotlightView`.
-@property(nonatomic, strong) UIImage* IPHHighlightedImage;
-// View used to display the blue dot on the icon.
-@property(nonatomic, strong) UIView* blueDotView;
+@property(nonatomic, copy) ToolbarButtonImageLoader imageLoader;
+@property(nonatomic, copy) ToolbarButtonImageLoader iphHighlightedImageLoader;
+
 @end
 
-@implementation ToolbarButton
+@implementation ToolbarButton {
+  ToolbarStyle _style;
+  BOOL _alwaysHiddenInCurrentSizeClass;
+}
+
+@synthesize toolbarConfiguration = _toolbarConfiguration;
+@synthesize visibilityMask = _visibilityMask;
+@synthesize hiddenInCurrentSizeClass = _hiddenInCurrentSizeClass;
+@synthesize hiddenInCurrentState = _hiddenInCurrentState;
+@synthesize guideName = _guideName;
+@synthesize layoutGuideCenter = _layoutGuideCenter;
+@synthesize iphHighlighted = _iphHighlighted;
+@synthesize spotlightView = _spotlightView;
+@synthesize hasBlueDot = _hasBlueDot;
+
++ (instancetype)toolbarButtonWithImageLoader:(ToolbarButtonImageLoader)imageLoader {
+  return [[self alloc] initWithImageLoader:imageLoader];
+}
 
 - (instancetype)initWithImageLoader:(ToolbarButtonImageLoader)imageLoader {
   return [self initWithImageLoader:imageLoader IPHHighlightedImageLoader:nil];
 }
 
 - (instancetype)initWithImageLoader:(ToolbarButtonImageLoader)imageLoader
-          IPHHighlightedImageLoader:
-              (ToolbarButtonImageLoader)IPHHighlightedImageLoader {
-  self = [[super class] buttonWithType:UIButtonTypeSystem];
+          IPHHighlightedImageLoader:(ToolbarButtonImageLoader)iphHighlightedImageLoader {
+  self = [super initWithFrame:CGRectZero];
   if (self) {
-    CHECK(imageLoader);
+    self.translatesAutoresizingMaskIntoConstraints = NO;
     _imageLoader = [imageLoader copy];
-    _IPHHighlightedImageLoader = [IPHHighlightedImageLoader copy];
+    _iphHighlightedImageLoader = [iphHighlightedImageLoader copy];
+    self.accessibilityLabel = @"Toolbar Button";
+    _style = ToolbarStyle::kNormal;
 
-    [self initializeButton];
+    // Load image and ensure it's not nil
+    if (imageLoader) {
+      self.image = imageLoader();
+      if (!self.image) {
+        NSLog(@"ToolbarButton: Image loader returned nil, using fallback");
+        self.image = [ToolbarButton fallbackImage];
+      }
+    } else {
+      NSLog(@"ToolbarButton: No image loader provided, using fallback");
+      self.image = [ToolbarButton fallbackImage];
+    }
+
+    [self setImage:self.image forState:UIControlStateNormal];
+    self.tintColor = [UIColor colorNamed:kToolbarButtonColor];
+    NSLog(@"ToolbarButton: Initialized button=%@ with image=%@, tintColor=%@, caller=%@",
+          self, self.image, self.tintColor, [[NSThread callStackSymbols] objectAtIndex:1]);
   }
   return self;
 }
 
-- (void)setImageLoader:(ToolbarButtonImageLoader)imageLoader {
-  CHECK(imageLoader);
-  _imageLoader = [imageLoader copy];
-  if (_image != nil) {
-    _image = nil;
-    [self updateImage];
-  }
++ (UIImage*)fallbackImage {
+  UIGraphicsBeginImageContextWithOptions(CGSizeMake(24, 24), NO, 0.0);
+  UIImage* image = UIGraphicsGetImageFromCurrentImageContext();
+  UIGraphicsEndImageContext();
+  return image;
 }
 
-#pragma mark - Public Methods
+- (void)dealloc {
+  _imageLoader = nil;
+  _iphHighlightedImageLoader = nil;
+}
+
+#pragma mark - Public
 
 - (void)updateHiddenInCurrentSizeClass {
-  BOOL newHiddenValue = YES;
-
-  BOOL isCompactWidth = self.traitCollection.horizontalSizeClass ==
-                        UIUserInterfaceSizeClassCompact;
-  BOOL isCompactHeight =
-      self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact;
-  BOOL isRegularWidth = self.traitCollection.horizontalSizeClass ==
-                        UIUserInterfaceSizeClassRegular;
-  BOOL isRegularHeight =
-      self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassRegular;
-
-  if (isCompactWidth && isCompactHeight) {
-    newHiddenValue = !(self.visibilityMask &
-                       ToolbarComponentVisibilityCompactWidthCompactHeight);
-  } else if (isCompactWidth && isRegularHeight) {
-    newHiddenValue = !(self.visibilityMask &
-                       ToolbarComponentVisibilityCompactWidthRegularHeight);
-  } else if (isRegularWidth && isCompactHeight) {
-    newHiddenValue = !(self.visibilityMask &
-                       ToolbarComponentVisibilityRegularWidthCompactHeight);
-  } else if (isRegularWidth && isRegularHeight) {
-    newHiddenValue = !(self.visibilityMask &
-                       ToolbarComponentVisibilityRegularWidthRegularHeight);
+  BOOL shouldBeHidden = _alwaysHiddenInCurrentSizeClass ||
+                       [self isHiddenInCurrentSizeClassForTraitCollection:self.traitCollection];
+  if (self.hidden != shouldBeHidden) {
+    self.hidden = shouldBeHidden;
+    NSLog(@"ToolbarButton: Updated hiddenInCurrentSizeClass=%d for button=%@", shouldBeHidden, self);
   }
-
-  if (self.hiddenInCurrentSizeClass != newHiddenValue) {
-    self.hiddenInCurrentSizeClass = newHiddenValue;
-    [self setHiddenForCurrentStateAndSizeClass];
-  }
-
-  [self checkNamedGuide];
-  [self checkImageVisibility];
 }
 
-- (void)setHiddenInCurrentState:(BOOL)hiddenInCurrentState {
-  _hiddenInCurrentState = hiddenInCurrentState;
-  [self setHiddenForCurrentStateAndSizeClass];
+- (void)setHiddenInCurrentSizeClass:(BOOL)hiddenInCurrentSizeClass {
+  _hiddenInCurrentSizeClass = hiddenInCurrentSizeClass;
+  [self updateHiddenInCurrentSizeClass];
+}
+
+- (void)updateStyle:(ToolbarStyle)style {
+  _style = style;
+  [self setNeedsUpdateConfiguration];
+}
+
+- (void)setImageLoader:(ToolbarButtonImageLoader)imageLoader {
+  _imageLoader = [imageLoader copy];
+  if (_imageLoader) {
+    UIImage* newImage = _imageLoader();
+    if (newImage) {
+      self.image = newImage;
+      [self setImage:self.image forState:UIControlStateNormal];
+    } else {
+      NSLog(@"ToolbarButton: New image loader returned nil, using fallback");
+      self.image = [ToolbarButton fallbackImage];
+      [self setImage:self.image forState:UIControlStateNormal];
+    }
+  } else {
+    NSLog(@"ToolbarButton: New image loader is nil, using fallback");
+    self.image = [ToolbarButton fallbackImage];
+    [self setImage:self.image forState:UIControlStateNormal];
+  }
+  NSLog(@"ToolbarButton: Set imageLoader, new image=%@ for button=%@", self.image, self);
 }
 
 - (void)setIphHighlighted:(BOOL)iphHighlighted {
-  if (iphHighlighted == _iphHighlighted) {
-    return;
-  }
-
   _iphHighlighted = iphHighlighted;
-  if ([self canUseIPHHighlightedImage]) {
-    [self updateImage];
+  if (iphHighlighted && _iphHighlightedImageLoader) {
+    UIImage* highlightedImage = _iphHighlightedImageLoader();
+    if (highlightedImage) {
+      [self setImage:highlightedImage forState:UIControlStateNormal];
+    }
+    NSLog(@"ToolbarButton: Set iphHighlighted=%d, image=%@ for button=%@", iphHighlighted, highlightedImage, self);
   } else {
-    [self updateTintColor];
-    [self updateSpotlightView];
+    [self setImage:self.image forState:UIControlStateNormal];
+    NSLog(@"ToolbarButton: Set iphHighlighted=%d, reverted to image=%@ for button=%@", iphHighlighted, self.image, self);
   }
 }
 
-- (void)setToolbarConfiguration:(ToolbarConfiguration*)toolbarConfiguration {
-  _toolbarConfiguration = toolbarConfiguration;
-  if (!toolbarConfiguration) {
-    return;
-  }
-  _spotlightView.backgroundColor =
-      self.toolbarConfiguration.buttonsIPHHighlightColor;
-  [self updateTintColor];
+#pragma mark - UIButton
+
+- (void)updateConfiguration {
+  self.configuration = [self buttonConfiguration];
 }
 
-- (void)setHasBlueDot:(BOOL)hasBlueDot {
-  if (_hasBlueDot == hasBlueDot) {
-    return;
-  }
+#pragma mark - UIAccessibility
 
-  _hasBlueDot = hasBlueDot;
-
-  if (hasBlueDot) {
-    [self addBlueDotViewIfNeeded];
-  } else {
-    [self removeBlueDotViewIfNeeded];
-  }
-}
-
-#pragma mark - Accessors
-
-- (UIView*)spotlightView {
-  // Lazy load spotlightView to improve startup latency.
-  if (!_spotlightView) {
-    [self createSpotlightViewIfNeeded];
-  }
-  return _spotlightView;
-}
-
-- (UIImage*)image {
-  // Lazy load image to improve startup latency.
-  if (!_image) {
-    _image = _imageLoader();
-  }
-  return _image;
-}
-
-- (UIImage*)IPHHighlightedImage {
-  // Lazy load IPHHighlightedImage to improve startup latency.
-  if (!_IPHHighlightedImage && _IPHHighlightedImageLoader) {
-    _IPHHighlightedImage = _IPHHighlightedImageLoader();
-  }
-  return _IPHHighlightedImage;
+- (BOOL)isAccessibilityElement {
+  return YES;
 }
 
 #pragma mark - Private
 
-- (void)initializeButton {
-  self.translatesAutoresizingMaskIntoConstraints = NO;
+- (UIButtonConfiguration*)buttonConfiguration {
+  UIButtonConfiguration* configuration = [UIButtonConfiguration plainButtonConfiguration];
+  configuration.image = self.image;
+  configuration.imagePadding = 8;
+  configuration.baseForegroundColor = [self foregroundColor];
+  configuration.contentInsets = NSDirectionalEdgeInsetsMake(8, 8, 8, 8);
+  return configuration;
 }
 
-// Creates spotlightView if not done yet.
-- (void)createSpotlightViewIfNeeded {
-  if (_spotlightView) {
-    return;
+- (UIColor*)foregroundColor {
+  if (self.toolbarConfiguration) {
+    return self.toolbarConfiguration.buttonsTintColor;
   }
-  UIView* spotlightView = [[UIView alloc] init];
-  spotlightView.translatesAutoresizingMaskIntoConstraints = NO;
-  spotlightView.hidden = YES;
-  spotlightView.userInteractionEnabled = NO;
-  spotlightView.layer.cornerRadius = kSpotlightCornerRadius;
-  spotlightView.backgroundColor =
-      self.toolbarConfiguration.buttonsIPHHighlightColor;
-  // Make sure that the spotlightView is below the image to avoid changing the
-  // color of the image.
-  [self insertSubview:spotlightView belowSubview:self.imageView];
-  AddSameCenterConstraints(self, spotlightView);
-  [spotlightView.widthAnchor constraintEqualToConstant:kSpotlightSize].active =
-      YES;
-  [spotlightView.heightAnchor constraintEqualToConstant:kSpotlightSize].active =
-      YES;
-  _spotlightView = spotlightView;
-}
-
-// Checks if the button should be visible based on its hiddenInCurrentSizeClass
-// and hiddenInCurrentState properties, then updates its visibility accordingly.
-- (void)setHiddenForCurrentStateAndSizeClass {
-  self.hidden = self.hiddenInCurrentState || self.hiddenInCurrentSizeClass;
-
-  [self checkNamedGuide];
-  [self checkImageVisibility];
-}
-
-// Checks whether the named guide associated with this button, if there is one,
-// should be updated.
-- (void)checkNamedGuide {
-  if (!self.hidden && self.guideName) {
-    [self.layoutGuideCenter referenceView:self underName:self.guideName];
+  switch (_style) {
+    case ToolbarStyle::kNormal:
+      return [UIColor colorNamed:kToolbarButtonColor];
+    case ToolbarStyle::kIncognito:
+      // Fallback since kToolbarButtonColorIncognito is undefined
+      return [UIColor colorNamed:kToolbarButtonColor] ?: [UIColor whiteColor];
   }
 }
 
-// Checks whether the image is set when the button visibility is changed, if the
-// button is visible and the image is not set, update the image.
-- (void)checkImageVisibility {
-  // Use `self.currentImage` to check whether the image is set,
-  // `self.imageView.image` is a costly call from the Instruments measurement.
-  if (!self.hidden && !self.currentImage) {
-    [self updateImage];
-  }
-}
-
-// Updates the spotlight view's appearance according to the current state.
-- (void)updateSpotlightView {
-  self.spotlightView.hidden = !self.iphHighlighted;
-}
-
-- (void)updateImage {
-  if (_iphHighlighted && [self canUseIPHHighlightedImage]) {
-    [self setImage:self.IPHHighlightedImage forState:UIControlStateNormal];
-  } else {
-    [self setImage:self.image forState:UIControlStateNormal];
-  }
-}
-
-// Updates the tint color according to the current state.
-- (void)updateTintColor {
-  self.tintColor =
-      (self.iphHighlighted)
-          ? self.toolbarConfiguration.buttonsTintColorIPHHighlighted
-          : self.toolbarConfiguration.buttonsTintColor;
-}
-
-// Whether there is an IPH highlighted image can be used.
-- (BOOL)canUseIPHHighlightedImage {
-  return _IPHHighlightedImageLoader != nil;
-}
-
-// Adds blue dot view to the button if there is none yet.
-- (void)addBlueDotViewIfNeeded {
-  if (self.blueDotView) {
-    return;
-  }
-
-  self.blueDotView = [[UIView alloc] init];
-  self.blueDotView.translatesAutoresizingMaskIntoConstraints = NO;
-  self.blueDotView.accessibilityIdentifier = kToolbarButtonBlueDotViewID;
-  self.blueDotView.layer.cornerRadius = kBlueDotSize / 2;
-  self.blueDotView.backgroundColor = [UIColor colorNamed:kBlue600Color];
-  [self addSubview:self.blueDotView];
-
-  [NSLayoutConstraint activateConstraints:@[
-    [self.blueDotView.widthAnchor constraintEqualToConstant:kBlueDotSize],
-    [self.blueDotView.heightAnchor constraintEqualToConstant:kBlueDotSize],
-    // Position the blue dot at right top corner of the button image.
-    [self.blueDotView.centerXAnchor
-        constraintEqualToAnchor:self.centerXAnchor
-                       constant:kToolsMenuButtonImageSize / 2 -
-                                kButtonImageInset],
-    [self.blueDotView.centerYAnchor
-        constraintEqualToAnchor:self.centerYAnchor
-                       constant:-kToolsMenuButtonImageSize / 2 +
-                                kButtonImageInset],
-  ]];
-}
-
-// Removes blue dot view from the button if there is one.
-- (void)removeBlueDotViewIfNeeded {
-  if (!self.blueDotView) {
-    return;
-  }
-
-  [self.blueDotView removeFromSuperview];
-  self.blueDotView = nil;
+- (BOOL)isHiddenInCurrentSizeClassForTraitCollection:(UITraitCollection*)traitCollection {
+  return NO;
 }
 
 @end
